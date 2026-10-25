@@ -85,13 +85,13 @@ module.exports = function registerAdmin(ctx) {
     return {
       token: signToken({
         userId: user.id,
-        role: 'admin',
+        role: user.role,
         adminAccountId: adminAccount.id,
         adminCredentialSession: true
       }),
       must_change_password: mustChange,
       username: adminAccount.username,
-      role: 'admin',
+      role: user.role,
       note: mustChange
         ? 'Set a new admin password before using moderation tools. The bootstrap credential is development-only.'
         : 'Signed in with a studio admin credential.'
