@@ -26,6 +26,8 @@
     "apk:release": "bash scripts/build_apk.sh release",
     "configure:apk": "node scripts/configure_apk.js",
     "bundle:server": "python3 scripts/bundle_server.py",
+    "setup:env": "node scripts/setup_env.js",
+    "doctor": "node scripts/doctor.js",
     "verify:server": "node scripts/verify_server.js"
   },
   "devDependencies": {

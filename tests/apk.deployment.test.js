@@ -577,7 +577,7 @@ test('APK-15 — the VM setup script is complete, safe to re-run and free of sec
 test('APK-16 — the no-card hosting guide matches what the app actually needs', () => {
   const doc = read('docs', 'ALWAYSDATA_STEP_BY_STEP.md');
   // The site must be created as a Node.js site running the real entry point, by absolute path.
-  assert.match(doc, /node \/home\/YOURNAME\/riderise\/backend\/server\.js/);
+  assert.match(doc, /node \/home\/riseriselk\/riderise\/backend\/server\.js/);
   // The one-line ways to get the code there, both verified against the real repository.
   assert.match(doc, /git clone --depth 1 -b arena\/127f733a-riderise-lk/);
   assert.match(doc, /codeload\.github\.com\/shaundavidkagenou-oss\/RideRise-LK\/tar\.gz/);
@@ -589,9 +589,15 @@ test('APK-16 — the no-card hosting guide matches what the app actually needs',
   assert.match(doc, /22\.13|Node\.js \*\*24/);
   // It must tell the reader where the .env lives and that it is what breaks auth if missing.
   assert.match(doc, /FIREBASE_API_KEY/);
-  // The database lands inside the app folder, which is the persistent part of the account.
-  assert.match(doc, /backend\/riderise_lk\.sqlite/);
-  assert.match(doc, /\/home\/YOURNAME\/riderise/);
+  // The two helpers that remove hand-editing: write the settings, then prove the server boots.
+  assert.match(doc, /node scripts\/setup_env\.js/);
+  assert.match(doc, /node scripts\/doctor\.js/);
+  // The folder mistake that produced MODULE_NOT_FOUND is called out with the fix.
+  assert.match(doc, /Cannot find module '\/home\/riseriselk\/backend\/server\.js'/);
+  // The database lands inside the app folder, which is the persistent part of the account
+  // (setup_env.js leaves DB_PATH at its default, which is exactly that path).
+  assert.match(doc, /persistent/);
+  assert.match(doc, /\/home\/riseriselk\/riderise/);
   // And it must not promise more than the free plan gives.
   assert.match(doc, /for personal needs/i, 'must disclose the personal-use restriction');
   assert.match(doc, /256 MB/);
@@ -603,4 +609,92 @@ test('APK-16 — the no-card hosting guide matches what the app actually needs',
   assert.match(assess, /Cloud Functions/, 'must name the real migration, not a vague one');
   assert.match(assess, /credit card/i);
   assert.match(assess, /ALWAYSDATA_STEP_BY_STEP\.md/);
+});
+
+/* ------------------------------------------------- panel-side setup helpers ---- */
+
+const { checkApiKey, checkAppId, checkAdminPassword, parseEnv } = require('../scripts/setup_env.js');
+
+test('APK-17 — the .env helper validates the values that decide whether anyone can sign in', () => {
+  // Firebase web keys start with AIza; the app id must be the web-app form.
+  assert.equal(checkApiKey('AIzaSyB1exampleexampleexampleexample123'), null);
+  assert.equal(checkApiKey(''), 'missing');
+  assert.match(checkApiKey('not-a-key'), /starts with "AIza"/);
+  assert.match(checkApiKey('AIzaShort'), /too short/);
+
+  assert.equal(checkAppId('1:614966302540:web:abc123def'), null);
+  assert.equal(checkAppId(''), 'missing');
+  assert.match(checkAppId('614966302540'), /should look like 1:/);
+
+  // An empty admin password is allowed (the server generates one); a short one is not.
+  assert.equal(checkAdminPassword(''), null);
+  assert.match(checkAdminPassword('short'), /at least 12/);
+  assert.equal(checkAdminPassword('long-enough-password'), null);
+
+  // Values are parsed without quotes and without comments.
+  const parsed = parseEnv('# comment\nA=1\nB="two"\n\nC=three=four\n');
+  assert.deepEqual(parsed, { A: '1', B: 'two', C: 'three=four' });
+});
+
+test('APK-18 — the setup helper writes a working .env and the doctor proves it boots', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rr-envsetup-'));
+  // A small stand-in for the repository: the helper only needs .env.example and config/.
+  fs.mkdirSync(path.join(dir, 'scripts'));
+  fs.mkdirSync(path.join(dir, 'config'));
+  fs.copyFileSync(path.join(ROOT, 'scripts', 'setup_env.js'), path.join(dir, 'scripts', 'setup_env.js'));
+  fs.copyFileSync(path.join(ROOT, '.env.example'), path.join(dir, '.env.example'));
+  fs.writeFileSync(path.join(dir, 'config', 'brand.config.json'), '{}');
+
+  try {
+    const out = execFileSync(
+      process.execPath,
+      [path.join(dir, 'scripts', 'setup_env.js'), '--non-interactive',
+        '--api-key=AIzaSyB1exampleexampleexampleexample123',
+        '--app-id=1:614966302540:web:abc123'],
+      { cwd: dir, encoding: 'utf8' }
+    );
+    assert.match(out, /Wrote .*\.env/);
+    assert.match(out, /session secret/i);
+
+    const envPath = path.join(dir, '.env');
+    const written = fs.readFileSync(envPath, 'utf8');
+    const values = parseEnv(written);
+
+    // A real secret, generated, 64 hex characters — and never echoed in the output.
+    assert.match(values.JWT_SECRET, /^[0-9a-f]{64}$/);
+    assert.doesNotMatch(out, new RegExp(values.JWT_SECRET), 'the secret must not be printed');
+
+    // The host owns the port: a fixed PORT here is the classic silent 502.
+    assert.doesNotMatch(written, /^PORT=\d+/m, 'PORT must stay commented out when a host assigns it');
+
+    // Production mode, IPv6-capable bind for a panel proxy, and the known project identifiers.
+    assert.equal(values.NODE_ENV, 'production');
+    assert.equal(values.HOST, '::');
+    assert.equal(values.FIREBASE_PROJECT_ID, 'rideriselk');
+    assert.equal(values.FIREBASE_API_KEY, 'AIzaSyB1exampleexampleexampleexample123');
+
+    // No key appears twice: the template line is replaced, not duplicated.
+    const keys = written.split('\n').filter((l) => /^[A-Z_]+=/.test(l)).map((l) => l.split('=')[0]);
+    assert.equal(new Set(keys).size, keys.length, `duplicate keys: ${keys.join(',')}`);
+
+    // Private file.
+    if (process.platform !== 'win32') {
+      assert.equal(fs.statSync(envPath).mode & 0o777, 0o600);
+    }
+
+    // Re-running keeps the existing session secret (otherwise every rider is signed out).
+    execFileSync(process.execPath,
+      [path.join(dir, 'scripts', 'setup_env.js'), '--non-interactive',
+        '--api-key=AIzaSyB1exampleexampleexampleexample123',
+        '--app-id=1:614966302540:web:abc123'],
+      { cwd: dir, encoding: 'utf8' });
+    assert.equal(parseEnv(fs.readFileSync(envPath, 'utf8')).JWT_SECRET, values.JWT_SECRET);
+
+    // A malformed key is refused instead of being written.
+    assert.throws(() => execFileSync(process.execPath,
+      [path.join(dir, 'scripts', 'setup_env.js'), '--non-interactive', '--api-key=oops'],
+      { cwd: dir, encoding: 'utf8' }));
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });

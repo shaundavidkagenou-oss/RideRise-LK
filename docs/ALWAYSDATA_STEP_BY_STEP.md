@@ -4,6 +4,10 @@ Written for the point you are at: the account exists, you are looking at the pan
 below is copy-paste. **Substitute `YOURNAME` with your alwaysdata account name** — the one you chose
 at signup. Your site address will be `https://YOURNAME.alwaysdata.net`.
 
+> **Your account is `riseriselk`, so your address is `https://riseriselk.alwaysdata.net`.**
+> (Spelled r-i-s-e-r-i-s-e-l-k, exactly as in your SSH prompt. Fine as it is — the app does not care
+> what the address is called, and changing it later is a rebuild, not a rename.)
+
 Two things to know before we start:
 
 - **The panel is at `admin.alwaysdata.com`**, not the marketing site you signed up on.
@@ -46,7 +50,21 @@ Either way you should end up with a prompt like `YOURNAME@ssh1:~$`. You are now 
 
 ## Step 3 — Put the code there (2 min)
 
-Copy-paste this **one line**:
+> **The error you got** (`Cannot find module '/home/riseriselk/backend/server.js'`) means one thing:
+> the command was run in your home folder instead of the folder the code is in. Node looked for
+> `/home/riseriselk/backend/server.js`, and there is nothing there. It is not a bug in the app.
+
+Every command from here starts with the same two words, so this cannot happen again:
+
+```bash
+cd ~/riderise
+```
+
+- If it answers `No such file or directory`, the code was never downloaded — run the clone below.
+- If it works, your prompt changes to `~/riderise` (or you can check with `pwd`, which prints
+  `/home/riseriselk/riderise`).
+
+Copy-paste this **one line** to get the code:
 
 ```bash
 git clone --depth 1 -b arena/127f733a-riderise-lk https://github.com/shaundavidkagenou-oss/RideRise-LK.git riderise
@@ -61,13 +79,15 @@ same code as a 13 MB archive:
 curl -L https://codeload.github.com/shaundavidkagenou-oss/RideRise-LK/tar.gz/refs/heads/arena/127f733a-riderise-lk -o rr.tar.gz && mkdir riderise && tar xzf rr.tar.gz -C riderise --strip-components=1 && rm rr.tar.gz
 ```
 
-Check it landed:
+Check it landed (this exact command, from anywhere):
 
 ```bash
-cd riderise && ls
+cd ~/riderise && pwd && ls
 ```
 
-You should see `backend  config  web_app  deploy  docs  package.json  README.md`.
+You must see `/home/riseriselk/riderise` and then `backend  config  web_app  deploy  docs
+package.json  README.md`. If `pwd` prints something else, the `cd` failed and you are in the wrong
+folder — do not continue until it prints `/home/riseriselk/riderise`.
 
 ```bash
 node -v
@@ -78,78 +98,93 @@ an open SSH session keeps the old version.
 
 ---
 
-## Step 4 — Create the settings file (3 min)
+## Step 4 — Create the settings file (2 min, three questions)
 
-Still in `~/riderise`, paste this block exactly:
-
-```bash
-cat > .env <<'EOF'
-JWT_SECRET=REPLACE_ME
-FIREBASE_PROJECT_ID=rideriselk
-FIREBASE_API_KEY=REPLACE_ME
-FIREBASE_AUTH_DOMAIN=rideriselk.firebaseapp.com
-FIREBASE_APP_ID=REPLACE_ME
-FIREBASE_MESSAGING_SENDER_ID=614966302540
-FIREBASE_STORAGE_BUCKET=rideriselk.firebasestorage.app
-ADMIN_USERNAME=studio-admin
-ADMIN_PASSWORD=REPLACE_ME
-NODE_ENV=production
-HOST=::
-EOF
-```
-
-Now generate the session secret and put it in place (one command, no typing of random characters):
+No file editor, no typing of secrets. There is a helper in the repo that asks for the three values
+it cannot know and writes everything else:
 
 ```bash
-sed -i "s|^JWT_SECRET=.*|JWT_SECRET=$(openssl rand -hex 32)|" .env && grep JWT_SECRET .env
+cd ~/riderise && node scripts/setup_env.js
 ```
 
-The last line prints `JWT_SECRET=` followed by 64 characters. If it prints `REPLACE_ME`, `openssl` is
-missing — use `head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n'` and paste the result after
-`JWT_SECRET=`.
+It asks three things. Have the `.env` from **your own computer** open so you can copy two of them:
 
-Two values still say `REPLACE_ME` and you must fill them from the `.env` on **your own computer**:
+1. **Firebase web API key** — starts with `AIza…`. This is `FIREBASE_API_KEY` from your PC's `.env`
+   (or Firebase console → Project settings → Your apps → Web app).
+   It checks the format and asks again if it looks wrong.
+2. **Firebase app id** — looks like `1:614966302540:web:abc123…`. This is `FIREBASE_APP_ID` from
+   your PC's `.env`.
+3. **Studio admin password** — 12+ characters, for the studio console. Press **Enter** to skip and
+   the server will generate one and print it once in the logs.
 
-| Line | Copy from your PC's `.env` |
-|---|---|
-| `FIREBASE_API_KEY=` | the `FIREBASE_API_KEY=` value |
-| `FIREBASE_APP_ID=` | the `FIREBASE_APP_ID=` value (`1:614966302540:web:…`) |
-| `ADMIN_PASSWORD=` | a password **you invent**, 12+ characters — the studio console login |
+It then writes `.env` with a **randomly generated 64-character session secret**, the project id,
+auth domain, sender id and storage bucket already filled in, `NODE_ENV=production`, and `HOST=::`
+(alwaysdata's proxy connects over IPv6). The file is created private (mode 600) and is never
+committed to Git.
 
-Edit with nano:
+What you should see at the end:
+
+```
+✔ Wrote /home/riseriselk/riderise/.env
+
+  session secret   a1b2************9f0e (64 characters, generated)
+  Firebase key     AIza************Qm7k
+  Firebase app id  1:614966302540:web:abc123
+  admin password   (empty — the server prints a generated one once)
+```
+
+Run it again later to change a value — it keeps the existing session secret (so riders stay signed
+in) and saves the previous file as `.env.bak`. Check what is configured without exposing secrets:
 
 ```bash
-nano .env
+cd ~/riderise && node scripts/setup_env.js --show
 ```
 
-Arrow to each line, delete `REPLACE_ME`, paste the value. **Ctrl+O**, **Enter**, **Ctrl+X** to save.
-
-> **`HOST=::`** tells the app to accept connections from alwaysdata's proxy over IPv6. If the site
-> later refuses to start with `EADDRNOTAVAIL`, delete that line and restart.
+> Prefer to edit by hand? The file is plain `KEY=value` (`nano ~/riderise/.env`). The only rules:
+> `JWT_SECRET` must be 32+ characters, and **do not set `PORT`** — the host assigns it.
 
 ---
 
-## Step 5 — Run it once by hand (1 min)
+## Step 5 — Prove it works (1 min)
 
-This catches every mistake (wrong Node, missing key, bad path) in the terminal instead of on the
-website:
+One command checks everything and then actually starts the server and asks it for `/api/health`:
 
 ```bash
-PORT=8100 node backend/server.js
+cd ~/riderise && node scripts/doctor.js
 ```
 
-You want to see, near the end:
+You want every line ticked and the last line to say **All good**:
 
 ```
-[RideRise LK] Firebase Auth configured for project "rideriselk" (email/password).
-RideRise LK by Shaun David Studios — Backend & App Server listening on http://[::]:8100
+  ✔ Node.js: v24.22.1
+  ✔ Built-in SQLite: available
+  ✔ File: backend/server.js
+  ✔ File: backend/schema.sql
+  ✔ File: config/brand.config.json
+  ✔ File: web_app/index.html
+  ✔ .env: /home/riseriselk/riderise/.env
+  ✔ Firebase API key: set
+  ✔ Firebase app id: 1:614966302540:web:abc123
+  ✔ Session secret: 64 characters
+  ✔ Firebase project id: rideriselk
+  ✔ Server boots: listening on port 41231
+  ✔ Answers /api/health: RideRise LK · phase 2
+  ✔ Sign-in configured: email/password enabled
+
+✔ All good. This server is ready.
 ```
 
-If **"Firebase Auth is NOT configured"** appears, `.env` was not read — check you are inside
-`~/riderise` and that the file is named exactly `.env` (`ls -a`).
+Anything marked ✖ prints the fix next to it — for example `✖ .env: missing — run: node
+scripts/setup_env.js`. Fix that one thing and run it again.
 
-Press **Ctrl+C** to stop it. The database (`backend/riderise_lk.sqlite`) has now been created inside
-that folder, which is the persistent part of your account.
+(This also proves the app starts on the server's own copy of Node, not just on your PC.)
+
+The database file `~/riderise/backend/riderise_lk.sqlite` has now been created. That folder is the
+**persistent** part of your account (1 GB), so riders, posts and messages survive restarts,
+redeploys and the panel's daily backups. Do not move it outside `/home/riseriselk`.
+
+> Want to watch it run by hand instead? `cd ~/riderise && PORT=8100 node backend/server.js`, look
+> for `listening on http://[::]:8100`, then press Ctrl+C.
 
 ---
 
@@ -167,9 +202,9 @@ Fill it in exactly like this:
 |---|---|
 | **Name** | `RideRise LK` |
 | **Type** | **Node.js** |
-| **Command** | `node /home/YOURNAME/riderise/backend/server.js` |
-| **Working directory** | `/home/YOURNAME/riderise` |
-| **Addresses** | `YOURNAME.alwaysdata.net` (add it if the field is empty) |
+| **Command** | `node /home/riseriselk/riderise/backend/server.js` |
+| **Working directory** | `/home/riseriselk/riderise` |
+| **Addresses** | `riseriselk.alwaysdata.net` (add it if the field is empty) |
 | **Node.js version** | **24** |
 | **Environment** | leave empty |
 
@@ -177,7 +212,7 @@ Save. Then press the **restart** icon next to the site (circular arrow) so it pi
 configuration.
 
 > If **Type** cannot be changed on the existing site, delete that site and add a new one of type
-> **Node.js**. The address field must contain your `YOURNAME.alwaysdata.net` — if it says the address
+> **Node.js**. The address field must contain your `riseriselk.alwaysdata.net` — if it says the address
 > is taken, the old site still holds it.
 
 Their proxy hands the app a `PORT` and forwards the public HTTPS traffic to it, so there is nothing
@@ -189,10 +224,10 @@ else to configure — no certificate, no ports, no firewall.
 
 On your **phone, on mobile data** (not Wi-Fi):
 
-1. **`https://YOURNAME.alwaysdata.net/api/health`**
+1. **`https://riseriselk.alwaysdata.net/api/health`**
    → JSON starting `{"status":"ok","app":"RideRise LK",…`
    and containing `"firebaseAuth":true`.
-2. **`https://YOURNAME.alwaysdata.net/`**
+2. **`https://riseriselk.alwaysdata.net/`**
    → the app opens: splash, then the welcome screen.
 
 That is the whole deployment. **You can turn your PC off now.**
@@ -204,14 +239,14 @@ That is the whole deployment. **You can turn your PC off now.**
 From your own computer, in the project folder:
 
 ```bash
-npm run verify:server -- --url https://YOURNAME.alwaysdata.net
-npm run configure:apk -- --url https://YOURNAME.alwaysdata.net
+npm run verify:server -- --url https://riseriselk.alwaysdata.net
+npm run configure:apk -- --url https://riseriselk.alwaysdata.net
 npm run apk
 ```
 
 Install `release/apk/riderise-lk-phase2-release.apk` → welcome screen → register. No URL to type.
 
-**Or just send me** `YOURNAME` (so the full address) and the JSON from `/api/health`, and I will do
+**Or just send me** the address and the JSON from `/api/health`, and I will do
 these three steps and rebuild the signed APK for you.
 
 ---
@@ -225,6 +260,7 @@ these three steps and rebuild the signed APK for you.
 | Logs: `Refusing to start: JWT_SECRET is required` | the secret line is empty or under 32 characters | re-run the `sed` line in Step 4, restart |
 | Logs: `EADDRNOTAVAIL` | IPv6 not available on their proxy for your account | delete `HOST=::` from `.env`, restart |
 | Logs: `Cannot find module '/home/…/backend/server.js'` | the code is not at that path | `ls ~/riderise/backend/server.js`; fix the Command and Working directory in Step 6 |
+| `Cannot find module '/home/riseriselk/backend/server.js'` | the command ran in the home folder, not the app folder | `cd ~/riderise` first — every command starts there |
 | `git: command not found` | no git on the server | use the tarball line in Step 3 |
 | SSH password rejected | SSH user is the account name, not your email | user `YOURNAME`, host `ssh-YOURNAME.alwaysdata.net` |
 | `node -v` still shows 20 in SSH | the session kept the old version | `exit`, reconnect |

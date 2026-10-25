@@ -82,6 +82,8 @@ npm run apk                                # rebuild signed debug + release APKs
 npm run verify:server -- --url https://…   # is a hosted server ready to ship in the app?
 npm run configure:apk -- --url https://…   # compile that address into the next APK
 npm run bundle:server                      # 3.6 MB zip of just what a server needs (panel upload)
+npm run setup:env                          # write .env for a hosted server (asks 3 questions)
+npm run doctor                             # is this server ready? boots it and checks /api/health
 npm run check:android-push                 # 37 static checks of the Gradle/FCM wiring
 npm run check:fcm                          # FCM service-account validity (+ --online to call Google)
 
