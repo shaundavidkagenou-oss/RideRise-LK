@@ -96,7 +96,7 @@ Certificate and file digests: `release/BUILD_INFO.md`, `release/apk/SHA256SUMS.t
    so GIS is exercised only through the documented sandbox bridge. The production verifier
    (RS256 signature, issuer, audience, expiry, `email_verified`) is implemented and its
    rejection paths are tested, but a live Google token exchange must be validated by the
-   studio once `GOOGLE_CLIENT_ID` is set.
+   studio once Firebase Authentication is configured (`docs/FIREBASE_AUTH.md`).
 2. **FCM push delivery.** Permission request, in-app notifications and unread counters are
    implemented and tested in-app; actual push delivery needs Firebase credentials
    (see `EXTERNAL_CONFIG.md`).

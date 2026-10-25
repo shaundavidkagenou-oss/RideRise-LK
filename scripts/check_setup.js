@@ -89,18 +89,42 @@ if (adminPass) {
   info('Using the documented demo admin', '"admin$123$" / "admin$123$" (refused in production)', 'Before real riders: change it in Studio Console → 🔑 Password, and set ADMIN_PASSWORD.');
 }
 
-/* --------------------------------- google --------------------------------- */
-const googleClient = env('GOOGLE_CLIENT_ID');
-if (googleClient) {
-  const looksRight = /\.apps\.googleusercontent\.com$/.test(googleClient);
-  (looksRight ? ok : warn)(
-    'Google Sign-In client id',
-    looksRight ? 'looks like a Web client id' : 'set, but it does not end in .apps.googleusercontent.com',
-    looksRight ? 'Add the same id to docs/GOOGLE_SIGNIN.md authorized origins.' : 'Copy the "Web application" client id exactly.'
+/* ------------------------- firebase auth (email/password) ------------------ */
+const fbProject = env('FIREBASE_PROJECT_ID');
+const fbApiKey = env('FIREBASE_API_KEY') || env('FIREBASE_WEB_API_KEY');
+const fbAuthDomain = env('FIREBASE_AUTH_DOMAIN');
+const fbAppId = env('FIREBASE_APP_ID');
+const demoAllowed = env('ALLOW_DEMO_SIGNIN');
+const isProdEnv = env('NODE_ENV') === 'production';
+
+if (fbProject && fbApiKey) {
+  ok(
+    'Firebase Authentication (email/password)',
+    `project "${fbProject}" — the browser config is served from /api/auth/firebase/config`
   );
-  info('APK caveat', 'Android WebViews cannot run Google OAuth, so the APK needs the Gradle + Credential Manager build', 'Keep the demo sign-in for APK testing, or follow docs/SETUP_GUIDE.md step 4.');
+  if (!fbAuthDomain) info('FIREBASE_AUTH_DOMAIN unset', `defaulting to ${fbProject}.firebaseapp.com`, 'Only set this if Firebase shows a different auth domain (e.g. a custom domain).');
+  if (!fbAppId) info('FIREBASE_APP_ID unset', 'sign-in works, but analytics/App Check style features need it', 'Firebase Console → Project settings → Your apps → Web app → appId.');
+  if (fbApiKey && !/^AIza[0-9A-Za-z_-]{20,}$/.test(fbApiKey)) {
+    warn('FIREBASE_API_KEY looks unusual', 'real Firebase web API keys normally start with "AIza"', 'Copy the apiKey from Firebase Console → Project settings → Your apps → Web app.');
+  }
+} else if (fbProject) {
+  fail(
+    'Firebase project set but no web API key',
+    'the server can verify tokens, but the browser cannot sign anyone in',
+    'Add FIREBASE_API_KEY from Firebase Console → Project settings → Your apps → Web app.'
+  );
 } else {
-  info('Google Sign-In not configured', 'the sandbox sign-in bridge is used (demo accounts)', 'See docs/SETUP_GUIDE.md step 4 to enable real Google accounts.');
+  warn(
+    'Email/password sign-in not configured',
+    'the sign-in form renders disabled and says so; nothing is faked',
+    'docs/FIREBASE_AUTH.md steps 1–6 (~10 minutes) — or set FIREBASE_PROJECT_ID + FIREBASE_API_KEY.'
+  );
+}
+if (isProdEnv && demoAllowed !== '0' && demoAllowed !== '1') {
+  warn('Demo sign-in state in production', 'refused unless ALLOW_DEMO_SIGNIN=1, which is the safe default', 'Leave it unset (or 0) so only real email/password accounts can sign in.');
+}
+if (env('GOOGLE_CLIENT_ID')) {
+  info('GOOGLE_CLIENT_ID is set but unused', 'riders sign in with Firebase email/password; the legacy Google bridge is disabled for new accounts', 'Safe to remove once no older client depends on it.');
 }
 
 /* ----------------------------------- map ---------------------------------- */
@@ -168,6 +192,15 @@ if (fcmJson) {
   }
 } else {
   info('Push not configured (server side)', 'in-app notifications still work; no device push is sent', 'docs/SETUP_GUIDE.md step 5 to enable FCM.');
+}
+
+/* --------------------- push project vs auth project sanity ---------------- */
+if (fcmProject && env('FIREBASE_PROJECT_ID') && fcmProject !== env('FIREBASE_PROJECT_ID')) {
+  warn(
+    'Push project and auth project differ',
+    `FCM service account is "${fcmProject}", FIREBASE_PROJECT_ID is "${env('FIREBASE_PROJECT_ID')}"`,
+    'ID tokens from a different project are rejected — use the same Firebase project for both.'
+  );
 }
 
 /* --------------------------------- the APK -------------------------------- */
@@ -266,8 +299,20 @@ async function probe() {
     }
     const configRes = await fetch(`${probeUrl}/api/config`, { signal: AbortSignal.timeout(8000) });
     const config = await configRes.json();
-    const google = Boolean(config.googleClientId);
-    (google ? ok : info)('  Google Sign-In', google ? 'client id published to the web client' : 'demo sign-in only');
+    const fb = config.firebase || {};
+    if (fb.configured) {
+      ok('  Email/password sign-in', `project "${fb.projectId}" is serving a browser config`);
+    } else {
+      warn(
+        '  Email/password sign-in',
+        fb.message || 'not configured on this deployment',
+        'Set FIREBASE_PROJECT_ID and FIREBASE_API_KEY, then redeploy.'
+      );
+    }
+    (config.demoSignInEnabled ? info : ok)(
+      '  Demo sign-in',
+      config.demoSignInEnabled ? 'enabled (evaluation builds only)' : 'disabled'
+    );
   } catch (err) {
     fail('Deployment unreachable', `${probeUrl} — ${err.message}`, 'Check the URL, TLS certificate and that the process is running.');
   }

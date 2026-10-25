@@ -71,7 +71,7 @@ function click(window, el) {
   el.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
 }
 
-test('UI 1 — launch splash, welcome hero and Google sign-in sheet render', async () => {
+test('UI 1 — launch splash, welcome hero and the email sign-in form render', async () => {
   const { window, document, errors, dom } = await bootApp();
   try {
     await waitFor(() => document.getElementById('splashScreen'), 8000, 'splash screen');
@@ -85,9 +85,17 @@ test('UI 1 — launch splash, welcome hero and Google sign-in sheet render', asy
     assert.match(document.body.textContent, /at least 16 years old/);
     assert.match(document.body.textContent, /Never ride stunts on public roads/i);
 
-    click(window, document.getElementById('googleSignInBtn'));
-    await waitFor(() => document.querySelector('.oauth-accounts'), 4000, 'OAuth account sheet');
-    assert.match(document.querySelector('.oauth-sub').textContent, /password is never shared/i);
+    // Sign-in is email + password (Firebase). With no Firebase project in the test
+    // environment the form must say so instead of pretending to work.
+    assert.ok(document.getElementById('authCard'), 'auth card must render');
+    assert.ok(document.getElementById('signInForm'), 'email sign-in form must render');
+    assert.match(document.body.textContent, /Firebase Authentication/);
+    assert.match(document.body.textContent, /not configured on this server/i);
+
+    // The demo-account sheet is still available for evaluation builds.
+    click(window, document.getElementById('demoSignInBtn'));
+    await waitFor(() => document.querySelector('.oauth-accounts'), 4000, 'demo account sheet');
+    assert.match(document.querySelector('.oauth-sub').textContent, /not\s+Firebase Authentication|legacy sandbox bridge/i);
     assert.ok(document.querySelectorAll('.oauth-account').length >= 4);
     assert.equal(errors.length, 0, `unexpected JS errors: ${errors.join(' | ')}`);
   } finally {
@@ -98,8 +106,8 @@ test('UI 1 — launch splash, welcome hero and Google sign-in sheet render', asy
 test('UI 2 — sign in, feed renders with seeded community content', async () => {
   const { window, document, errors, dom } = await bootApp();
   try {
-    await waitFor(() => document.getElementById('googleSignInBtn'), 12000, 'sign-in button');
-    click(window, document.getElementById('googleSignInBtn'));
+    await waitFor(() => document.getElementById('demoSignInBtn'), 12000, 'demo sign-in button');
+    click(window, document.getElementById('demoSignInBtn'));
     await waitFor(() => document.querySelector('[data-preset="kasun"]'), 4000, 'preset account');
     click(window, document.querySelector('[data-preset="kasun"]'));
 

@@ -13,6 +13,8 @@ const brandConfig = JSON.parse(
 );
 const { calculateBikeBuildRating, recalculateUserRank, awardValidatedXp } = require('./services');
 const { seedDatabase, DRAFT_SAFETY_NOTICE_VERBATIM } = require('./seed');
+const { createFirebaseAuth, FirebaseAuthError } = require('./firebase_auth');
+const { migrateFirebaseAuth, recordAuthEvent } = require('./auth_migrations');
 
 const PORT = Number(process.env.PORT || 3000);
 const HOST = process.env.HOST || '0.0.0.0';
@@ -57,6 +59,9 @@ function ensureColumn(table, column, definition) {
   }
 }
 ensureColumn('users_private', 'suspension_until', 'TEXT');
+// Firebase Authentication (email/password) columns, indexes and the auth event log.
+// Additive only: existing users keep every row and gain auth_provider = 'legacy'.
+migrateFirebaseAuth(db, { log: (msg) => console.log(msg) });
 seedDatabase(db);
 
 // =============================================================================
@@ -102,6 +107,30 @@ const phase2 = require('./phase2').createRouter({
 // Configure GOOGLE_CLIENT_ID to enable strict verification. Without it the server
 // falls back to the documented sandbox OAuth bridge used by this Phase 1 sandbox.
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Firebase Authentication (email + password). The verifier proves Firebase ID
+// tokens with Google's published certificates; it fails closed when the project
+// is not configured, so authentication can never "appear" to work.
+// ---------------------------------------------------------------------------
+const firebaseAuth = createFirebaseAuth();
+// Server-side verification only needs the project id; the API key is what the browser SDK
+// needs. Both are covered by the setup guide.
+const ALLOW_FIREBASE_SIGNIN = Boolean(firebaseAuth.projectId);
+if (firebaseAuth.configured) {
+  console.log(`[RideRise LK] Firebase Auth configured for project "${firebaseAuth.projectId}" (email/password).`);
+} else {
+  console.log(
+    '[RideRise LK] Firebase Auth is NOT configured — email/password sign-up and sign-in are disabled ' +
+      'until FIREBASE_PROJECT_ID and FIREBASE_API_KEY are set (docs/FIREBASE_AUTH.md).'
+  );
+}
+
+// Demo/sandbox sign-in remains available for the bundled demo accounts, but it is refused in
+// production unless an operator explicitly opts in with ALLOW_DEMO_SIGNIN=1.
+const ALLOW_DEMO_SIGNIN =
+  process.env.ALLOW_DEMO_SIGNIN === '1' ||
+  (process.env.NODE_ENV !== 'production' && process.env.ALLOW_DEMO_SIGNIN !== '0');
+
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
 const GOOGLE_ISSUERS = ['accounts.google.com', 'https://accounts.google.com'];
 let googleJwksCache = { keys: null, fetchedAt: 0 };
@@ -201,6 +230,7 @@ function getAuthUser(req) {
     .prepare(
       `SELECT u.id, u.email, u.is_minor, u.age_confirmed, u.onboarding_completed,
               u.terms_accepted_version, u.role, u.account_status, u.suspension_reason, u.suspension_until,
+              u.firebase_uid, u.auth_provider, u.email_verified_at,
               p.username, p.display_name, p.bio, p.avatar_url, p.district, p.preferred_riding_area,
               p.primary_bike_id, p.xp, p.rank_id, p.profile_visibility, p.hide_from_leaderboards,
               p.allow_friend_requests, p.allow_messages_from, p.notifications_enabled,
@@ -211,6 +241,9 @@ function getAuthUser(req) {
     )
     .get(decoded.userId);
   if (!user || user.account_status === 'deleted') return null;
+  // Defence in depth: a Firebase account must have a verified email before its session can
+  // reach protected endpoints, even if a token was issued before the address was confirmed.
+  if (user.firebase_uid && !user.email_verified_at) return null;
   // Phase 2: suspension applies to existing tokens immediately, not only at sign-in.
   if (user.account_status === 'suspended') {
     const until = user.suspension_until ? new Date(user.suspension_until).getTime() : null;
@@ -230,6 +263,249 @@ function getAuthUser(req) {
     }
   }
   return user;
+}
+
+/* ===========================================================================
+   Firebase authentication helpers
+   =========================================================================== */
+
+const USERNAME_PATTERN = /^[a-z0-9_]{3,24}$/;
+const RESERVED_USERNAMES = new Set([
+  'admin',
+  'administrator',
+  'moderator',
+  'moderators',
+  'support',
+  'safety',
+  'staff',
+  'official',
+  'studio',
+  'shaundavidstudios',
+  'shaundavid',
+  'riderise',
+  'rideriselk',
+  'riderise_lk',
+  'system',
+  'root',
+  'help',
+  'owner',
+  'guild',
+  'news'
+]);
+
+/**
+ * Resolve the caller's address for rate limiting and audit logs.
+ *
+ * `X-Forwarded-For` is only trusted when it comes from a loopback/private peer (a reverse
+ * proxy on the same host or VPC) or when TRUST_PROXY is set explicitly. Trusting it
+ * unconditionally would let any direct client spoof a fresh IP per request and walk straight
+ * past the sign-in and username rate limits.
+ */
+const TRUST_PROXY = String(process.env.TRUST_PROXY || '').trim();
+function isPrivatePeer(address) {
+  let addr = String(address || '');
+  // Normalise IPv4-mapped IPv6 (::ffff:10.0.0.5) before checking the ranges.
+  if (addr.startsWith('::ffff:')) addr = addr.slice(7);
+  return (
+    addr === '::1' ||
+    addr === '127.0.0.1' ||
+    addr.startsWith('127.') ||
+    addr.startsWith('10.') ||
+    addr.startsWith('192.168.') ||
+    /^172\.(1[6-9]|2\d|3[01])\./.test(addr)
+  );
+}
+function clientIp(req) {
+  const peer = (req.socket && req.socket.remoteAddress) || 'unknown';
+  const forwarded = String(req.headers['x-forwarded-for'] || '')
+    .split(',')[0]
+    .trim();
+  if (!forwarded) return peer;
+  const trusted = TRUST_PROXY === '1' ? true : TRUST_PROXY === '0' ? false : isPrivatePeer(peer);
+  return trusted ? forwarded : peer;
+}
+
+/** Usernames are stored lowercase; validation is identical for the API and the UI. */
+function validateUsername(raw) {
+  const username = String(raw || '').trim().toLowerCase();
+  if (!username) {
+    return { ok: false, reason: 'USERNAME_REQUIRED', message: 'Choose a username for your rider profile.' };
+  }
+  if (!USERNAME_PATTERN.test(username)) {
+    return {
+      ok: false,
+      reason: 'INVALID_USERNAME',
+      message: 'Usernames are 3–24 characters using lowercase letters, numbers or underscores.'
+    };
+  }
+  if (RESERVED_USERNAMES.has(username)) {
+    return { ok: false, reason: 'USERNAME_RESERVED', message: 'That username is reserved for studio staff. Choose another.' };
+  }
+  return { ok: true, username };
+}
+
+function usernameTaken(username, exceptUserId = null) {
+  const row = exceptUserId
+    ? db.prepare('SELECT 1 FROM profiles WHERE username = ? COLLATE NOCASE AND user_id != ?').get(username, exceptUserId)
+    : db.prepare('SELECT 1 FROM profiles WHERE username = ? COLLATE NOCASE').get(username);
+  return Boolean(row);
+}
+
+function usernameSuggestions(base, count = 3) {
+  const suggestions = [];
+  const suffixes = ['_lk', '_bmx', '_ride', '01', '02', '03'];
+  for (const suffix of suffixes) {
+    const candidate = `${String(base).slice(0, 24 - suffix.length)}${suffix}`;
+    if (!USERNAME_PATTERN.test(candidate)) continue;
+    if (!usernameTaken(candidate) && !suggestions.includes(candidate)) suggestions.push(candidate);
+    if (suggestions.length >= count) break;
+  }
+  return suggestions;
+}
+
+/**
+ * Create the SQLite profile that belongs to a verified Firebase identity.
+ * Runs in a transaction so a partial failure leaves nothing behind and the client can retry
+ * with the same Firebase account without ever producing a duplicate profile.
+ */
+function createProfileForFirebaseIdentity(identity, username, displayNameInput) {
+  const now = new Date().toISOString();
+  const userId = 'usr_' + Date.now().toString(36) + '_' + crypto.randomBytes(4).toString('hex');
+  const displayName = String(displayNameInput || username).trim().slice(0, 50) || username;
+  const verifiedAt = identity.emailVerified ? now : null;
+
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    db.prepare(
+      `INSERT INTO users_private (
+         id, google_sub, email, firebase_uid, auth_provider, email_verified_at, last_sign_in_at,
+         is_minor, age_confirmed, onboarding_completed, role, account_status, created_at, updated_at
+       ) VALUES (?, ?, ?, ?, 'firebase', ?, ?, 0, 0, 0, 'rider', 'active', ?, ?)`
+    ).run(userId, `firebase:${identity.uid}`, identity.email, identity.uid, verifiedAt, now, now, now);
+
+    db.prepare(
+      `INSERT INTO profiles (
+         user_id, username, display_name, bio, avatar_url, district, preferred_riding_area,
+         xp, rank_id, profile_visibility, hide_from_leaderboards, allow_friend_requests,
+         allow_messages_from, notifications_enabled, reduced_motion, locale, created_at, updated_at
+       ) VALUES (?, ?, ?, '', '/assets/brand/riderise_logo.png', 'Colombo', '', 0, 'rank_1', 'public', 0, 1, 'friends_only', 1, 0, 'en', ?, ?)`
+    ).run(userId, username, displayName, now, now);
+
+    db.exec('COMMIT');
+  } catch (err) {
+    try {
+      db.exec('ROLLBACK');
+    } catch {
+      /* already rolled back */
+    }
+    throw err;
+  }
+  return db.prepare('SELECT * FROM users_private WHERE id = ?').get(userId);
+}
+
+function sendFirebaseAuthError(res, err) {
+  const code = err && err.code ? err.code : 'AUTH_TOKEN_INVALID';
+  if (code === 'FIREBASE_NOT_CONFIGURED') {
+    return sendJson(res, 503, {
+      error: 'FIREBASE_NOT_CONFIGURED',
+      message: err.message,
+      docs: 'docs/FIREBASE_AUTH.md'
+    });
+  }
+  if (code === 'CERT_FETCH_FAILED' || code === 'CERT_INVALID') {
+    return sendJson(res, 503, {
+      error: 'AUTH_UNAVAILABLE',
+      message: 'The Google identity service could not be reached to verify your session. Check the server connection and try again.',
+      retryable: true
+    });
+  }
+  if (code === 'TOKEN_EXPIRED') {
+    return sendJson(res, 401, {
+      error: 'AUTH_TOKEN_EXPIRED',
+      reauthenticate: true,
+      message: 'Your sign-in session has expired. Sign in again to continue.'
+    });
+  }
+  return sendJson(res, 401, {
+    error: code.startsWith('TOKEN') ? 'AUTH_TOKEN_INVALID' : code,
+    detail: code,
+    message: 'Your sign-in could not be verified. Sign in again.'
+  });
+}
+
+/**
+ * Turn a verified Firebase identity into a RideRise session.
+ * Email verification is enforced here, not by the client.
+ */
+function respondWithFirebaseSession(res, { userRow, identity, ip, event, newAccount = false }) {
+  const now = new Date().toISOString();
+  let user = db.prepare('SELECT * FROM users_private WHERE id = ?').get(userRow.id);
+
+  if (!user || user.account_status === 'deleted') {
+    recordAuthEvent(db, { firebaseUid: identity.uid, event, outcome: 'failure', detail: 'deleted account', ip });
+    return sendJson(res, 410, {
+      error: 'ACCOUNT_DELETED',
+      message: 'This account has been deleted. Contact support@shaundavidstudios.lk if you believe this is a mistake.'
+    });
+  }
+
+  if (user.account_status === 'suspended') {
+    const expired = user.suspension_until && new Date(user.suspension_until).getTime() <= Date.now();
+    if (!expired) {
+      const until = user.suspension_until ? ` Suspension ends ${new Date(user.suspension_until).toUTCString()}.` : '';
+      recordAuthEvent(db, { userId: user.id, firebaseUid: identity.uid, event, outcome: 'failure', detail: 'suspended', ip });
+      return sendJson(res, 403, {
+        error: 'ACCOUNT_SUSPENDED',
+        message: `This account is currently suspended: ${user.suspension_reason || 'Community Guidelines violation'}.${until} You can appeal from the Safety Centre.`
+      });
+    }
+    db.prepare("UPDATE users_private SET account_status = 'active', suspension_reason = NULL, suspension_until = NULL WHERE id = ?").run(user.id);
+    user = db.prepare('SELECT * FROM users_private WHERE id = ?').get(user.id);
+  }
+
+  // The single gate that keeps unverified accounts out of community features.
+  if (!identity.emailVerified) {
+    recordAuthEvent(db, { userId: user.id, firebaseUid: identity.uid, event, outcome: 'blocked_unverified', ip });
+    return sendJson(res, 403, {
+      error: 'EMAIL_NOT_VERIFIED',
+      email: identity.email,
+      emailVerified: false,
+      canResendEmail: true,
+      profile_ready: true,
+      message:
+        'Your RideRise LK profile exists, but your email address is not verified yet. Open the verification link we emailed you, then continue.'
+    });
+  }
+
+  db.prepare(
+    'UPDATE users_private SET email_verified_at = COALESCE(email_verified_at, ?), last_sign_in_at = ?, updated_at = ? WHERE id = ?'
+  ).run(now, now, now, user.id);
+  user = db.prepare('SELECT * FROM users_private WHERE id = ?').get(user.id);
+
+  const token = signToken({ userId: user.id, role: user.role, provider: 'firebase' });
+  const summary = db.prepare('SELECT username, display_name FROM profiles WHERE user_id = ?').get(user.id);
+  recordAuthEvent(db, { userId: user.id, firebaseUid: identity.uid, event, outcome: 'success', ip });
+
+  return sendJson(res, 200, {
+    token,
+    authProvider: 'firebase',
+    emailVerified: true,
+    newAccount: Boolean(newAccount),
+    onboardingRequired: !user.onboarding_completed,
+    account: {
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      auth_provider: 'firebase',
+      email_verified: true,
+      is_minor: Boolean(user.is_minor),
+      age_confirmed: Boolean(user.age_confirmed),
+      onboarding_completed: Boolean(user.onboarding_completed),
+      terms_accepted_version: user.terms_accepted_version
+    },
+    profile: user.onboarding_completed ? formatPublicProfile(user.id, user.id) : null,
+    profileSummary: summary ? { username: summary.username, display_name: summary.display_name } : null
+  });
 }
 
 function isBlockedEitherWay(userA, userB) {
@@ -547,6 +823,8 @@ const server = http.createServer(async (req, res) => {
           guildLiveMap: true,
           guildVoice: true,
           walkieTalkie: true,
+          firebaseAuth: firebaseAuth.configured,
+          demoSignIn: ALLOW_DEMO_SIGNIN,
           push: pushSender.status().configured,
           turnRelay: Boolean(process.env.TURN_URLS || process.env.TURN_URL)
         },
@@ -565,6 +843,9 @@ const server = http.createServer(async (req, res) => {
         // Public browser client id only (never a secret). Empty means the sandbox
         // sign-in bridge is in use instead of Google Identity Services.
         googleClientId: GOOGLE_CLIENT_ID,
+        // Firebase web config (public identifiers) + demo-signin availability. No secrets.
+        firebase: firebaseAuth.webConfig(),
+        demoSignInEnabled: ALLOW_DEMO_SIGNIN,
         capabilities: {
           googleSignIn: Boolean(GOOGLE_CLIENT_ID),
           push: pushSender.status().configured,
@@ -577,7 +858,243 @@ const server = http.createServer(async (req, res) => {
     // =========================================================================
     // SECTION 3: GOOGLE AUTHENTICATION, ONBOARDING & ACCOUNT LIFECYCLE
     // =========================================================================
+    // =========================================================================
+    // FIREBASE AUTHENTICATION (email + password)
+    //
+    // The browser signs up / signs in with the Firebase client SDK, then exchanges the
+    // resulting ID token here. Nothing from the request body is trusted except the username
+    // the rider chooses; role, verification state and identity all come from the verified
+    // token and the database.
+    // =========================================================================
+    if (pathname === '/api/auth/firebase/config' && req.method === 'GET') {
+      return sendJson(res, 200, firebaseAuth.webConfig());
+    }
+
+    if (pathname === '/api/auth/username-available' && req.method === 'GET') {
+      const ip = clientIp(req);
+      if (!checkRateLimit(`uname:${ip}`, 60, 60)) {
+        return sendJson(res, 429, {
+          error: 'RATE_LIMITED',
+          message: 'Too many username checks. Wait a moment and try again.'
+        });
+      }
+      const raw = (parsedUrl.searchParams.get('username') || '').trim();
+      const check = validateUsername(raw);
+      if (!check.ok) {
+        return sendJson(res, 200, { available: false, username: raw.toLowerCase(), reason: check.reason, message: check.message });
+      }
+      const taken = usernameTaken(check.username);
+      return sendJson(res, 200, {
+        available: !taken,
+        username: check.username,
+        reason: taken ? 'USERNAME_TAKEN' : null,
+        message: taken ? `@${check.username} is already taken. Try another handle.` : `@${check.username} is available.`,
+        suggestions: taken ? usernameSuggestions(check.username) : []
+      });
+    }
+
+    if (pathname === '/api/auth/firebase/session' && req.method === 'POST') {
+      if (!ALLOW_FIREBASE_SIGNIN) {
+        return sendJson(res, 503, {
+          error: 'FIREBASE_NOT_CONFIGURED',
+          message:
+            'Email/password sign-in is not configured on this server yet. An administrator must set FIREBASE_PROJECT_ID and FIREBASE_API_KEY — see docs/FIREBASE_AUTH.md.'
+        });
+      }
+      const ip = clientIp(req);
+      if (!checkRateLimit(`fbsession:ip:${ip}`, 20, 300)) {
+        return sendJson(res, 429, { error: 'RATE_LIMITED', message: 'Too many sign-in attempts. Wait a few minutes and try again.' });
+      }
+      const body = await readJsonBody(req);
+      let identity;
+      try {
+        identity = await firebaseAuth.verifyIdToken(body.idToken);
+      } catch (err) {
+        recordAuthEvent(db, { event: 'firebase_session', outcome: 'failure', detail: err.code || err.message, ip });
+        return sendFirebaseAuthError(res, err);
+      }
+      if (!checkRateLimit(`fbsession:uid:${identity.uid}`, 30, 300)) {
+        return sendJson(res, 429, { error: 'RATE_LIMITED', message: 'Too many sign-in attempts for this account. Wait a few minutes.' });
+      }
+
+      const existing = db.prepare('SELECT * FROM users_private WHERE firebase_uid = ?').get(identity.uid);
+      if (!existing) {
+        recordAuthEvent(db, { firebaseUid: identity.uid, event: 'firebase_login_no_profile', outcome: 'failure', ip });
+        return sendJson(res, 409, {
+          error: 'PROFILE_REQUIRED',
+          signup_required: true,
+          email: identity.email,
+          emailVerified: identity.emailVerified,
+          message:
+            'Your Firebase account exists but has no RideRise LK profile yet. Finish creating your profile to continue.'
+        });
+      }
+      return respondWithFirebaseSession(res, { userRow: existing, identity, ip, event: 'firebase_login' });
+    }
+
+    if (pathname === '/api/auth/firebase/signup' && req.method === 'POST') {
+      if (!ALLOW_FIREBASE_SIGNIN) {
+        return sendJson(res, 503, {
+          error: 'FIREBASE_NOT_CONFIGURED',
+          message:
+            'Account creation is not configured on this server yet. An administrator must set FIREBASE_PROJECT_ID and FIREBASE_API_KEY — see docs/FIREBASE_AUTH.md.'
+        });
+      }
+      const ip = clientIp(req);
+      if (!checkRateLimit(`fbsignup:${ip}`, 10, 3600)) {
+        return sendJson(res, 429, { error: 'RATE_LIMITED', message: 'Too many sign-up attempts from this network. Try again later.' });
+      }
+      const body = await readJsonBody(req);
+      let identity;
+      try {
+        identity = await firebaseAuth.verifyIdToken(body.idToken);
+      } catch (err) {
+        recordAuthEvent(db, { event: 'firebase_signup', outcome: 'failure', detail: err.code || err.message, ip });
+        return sendFirebaseAuthError(res, err);
+      }
+
+      // Idempotent: a retry after a partial failure must never create a second profile.
+      let userRow = db.prepare('SELECT * FROM users_private WHERE firebase_uid = ?').get(identity.uid);
+
+      if (!userRow) {
+        const check = validateUsername(body.username);
+        if (!check.ok) return sendJson(res, 400, { error: check.reason, message: check.message });
+        if (usernameTaken(check.username)) {
+          return sendJson(res, 409, {
+            error: 'USERNAME_TAKEN',
+            username: check.username,
+            suggestions: usernameSuggestions(check.username),
+            message: `@${check.username} is already taken. Choose another handle and try again.`
+          });
+        }
+        const linkedEmail = db.prepare('SELECT id, firebase_uid, auth_provider FROM users_private WHERE lower(email) = ?').get(identity.email);
+        if (linkedEmail && !linkedEmail.firebase_uid) {
+          // Never merge on a matching email alone: that would hand one account's data to
+          // whoever can register that address elsewhere.
+          return sendJson(res, 409, {
+            error: 'ACCOUNT_LINK_REQUIRED',
+            link_required: true,
+            message:
+              'An existing RideRise LK profile already uses this email address. Sign in to that profile and link your Firebase account from Settings → Sign-in & security. Accounts are never merged automatically.'
+          });
+        }
+        try {
+          userRow = createProfileForFirebaseIdentity(identity, check.username, body.displayName);
+          recordAuthEvent(db, {
+            userId: userRow.id,
+            firebaseUid: identity.uid,
+            event: 'firebase_signup',
+            outcome: 'success',
+            detail: identity.emailVerified ? 'email verified at creation' : 'verification email pending',
+            ip
+          });
+        } catch (err) {
+          if (String(err.message || '').includes('UNIQUE')) {
+            const nowTaken = usernameTaken(check.username);
+            recordAuthEvent(db, { firebaseUid: identity.uid, event: 'firebase_signup', outcome: 'failure', detail: 'unique constraint', ip });
+            return sendJson(res, 409, {
+              error: nowTaken ? 'USERNAME_TAKEN' : 'PROFILE_CONFLICT',
+              message: 'That profile could not be created because the details collide with an existing account. Sign in again to retry.',
+              retryable: true
+            });
+          }
+          console.error('[RideRise LK] Firebase profile creation failed:', err.message);
+          recordAuthEvent(db, { firebaseUid: identity.uid, event: 'firebase_signup', outcome: 'failure', detail: err.message, ip });
+          return sendJson(res, 500, {
+            error: 'PROFILE_CREATE_FAILED',
+            retryable: true,
+            message:
+              'Your Firebase account was created, but the RideRise LK profile could not be saved. Nothing was duplicated — sign in again to finish setting up your profile.'
+          });
+        }
+      }
+
+      return respondWithFirebaseSession(res, { userRow, identity, ip, event: 'firebase_signup_session', newAccount: true });
+    }
+
+    if (pathname === '/api/auth/firebase/link' && req.method === 'POST') {
+      const user = getAuthUser(req);
+      if (!user) return sendJson(res, 401, { error: 'UNAUTHENTICATED' });
+      if (!checkRateLimit(`fblink:${user.id}`, 10, 3600)) {
+        return sendJson(res, 429, { error: 'RATE_LIMITED', message: 'Too many linking attempts. Try again later.' });
+      }
+      const body = await readJsonBody(req);
+      let identity;
+      try {
+        identity = await firebaseAuth.verifyIdToken(body.idToken);
+      } catch (err) {
+        return sendFirebaseAuthError(res, err);
+      }
+      if (!identity.emailVerified) {
+        return sendJson(res, 403, {
+          error: 'EMAIL_NOT_VERIFIED',
+          message: 'Verify your email address first, then link it to this profile.'
+        });
+      }
+      const owner = db.prepare('SELECT username FROM profiles WHERE user_id = ?').get(user.id);
+      if (user.firebase_uid && user.firebase_uid !== identity.uid) {
+        return sendJson(res, 409, {
+          error: 'ALREADY_LINKED',
+          message: 'This profile is already linked to a different Firebase account.'
+        });
+      }
+      const claimed = db.prepare('SELECT id FROM users_private WHERE firebase_uid = ? AND id != ?').get(identity.uid, user.id);
+      if (claimed) {
+        return sendJson(res, 409, { error: 'FIREBASE_ACCOUNT_IN_USE', message: 'That Firebase account is already linked to another rider.' });
+      }
+      db.prepare(
+        "UPDATE users_private SET firebase_uid = ?, auth_provider = 'firebase', email_verified_at = COALESCE(email_verified_at, ?), updated_at = ? WHERE id = ?"
+      ).run(identity.uid, new Date().toISOString(), new Date().toISOString(), user.id);
+      recordAuthEvent(db, {
+        userId: user.id,
+        firebaseUid: identity.uid,
+        event: 'firebase_link',
+        outcome: 'success',
+        detail: 'existing profile linked to Firebase',
+        ip: clientIp(req)
+      });
+      return sendJson(res, 200, {
+        linked: true,
+        email: identity.email,
+        username: owner ? owner.username : null,
+        message: 'This Riderise LK profile is now linked to your Firebase account. You can sign in with your email and password from now on.'
+      });
+    }
+
+    if (pathname === '/api/auth/firebase/status' && req.method === 'GET') {
+      const user = getAuthUser(req);
+      if (!user) return sendJson(res, 401, { error: 'UNAUTHENTICATED' });
+      return sendJson(res, 200, {
+        firebase_available: ALLOW_FIREBASE_SIGNIN,
+        linked: Boolean(user.firebase_uid),
+        provider: user.auth_provider || 'legacy',
+        email: user.firebase_uid ? user.email : null,
+        email_verified: Boolean(user.email_verified_at),
+        message: user.firebase_uid
+          ? 'This profile signs in with Firebase email/password.'
+          : 'This profile still uses the legacy demo session. Link a Firebase account to keep your data when you switch.'
+      });
+    }
+
+    if (pathname === '/api/auth/firebase/logout' && req.method === 'POST') {
+      const user = getAuthUser(req);
+      recordAuthEvent(db, { userId: user ? user.id : null, event: 'signout', outcome: 'success', ip: clientIp(req) });
+      return sendJson(res, 200, {
+        message: 'Signed out. Session tokens are held by the client and were discarded; the Firebase SDK session was cleared too.'
+      });
+    }
+
     if (pathname === '/api/auth/google' && req.method === 'POST') {
+      // Legacy sandbox bridge. Kept so existing demo accounts and older clients keep working,
+      // but it is not real authentication: it is refused in production unless explicitly
+      // enabled, and it can never grant an administrator role.
+      if (!ALLOW_DEMO_SIGNIN) {
+        return sendJson(res, 403, {
+          error: 'DEMO_SIGNIN_DISABLED',
+          message:
+            'Demo sign-in is disabled on this deployment. Sign in with your email address and password (Firebase Authentication).'
+        });
+      }
       const body = await readJsonBody(req);
 
       // Support testing cancelled, failed, or unavailable Google Auth states clearly
@@ -2930,4 +3447,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { server, db };
+module.exports = { server, db, firebaseAuth };

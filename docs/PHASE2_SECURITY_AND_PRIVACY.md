@@ -9,7 +9,7 @@ engineering review, not a certification. No external penetration test has been p
 
 | Control | Implementation |
 |---|---|
-| Rider sign-in | Google ID token verified server-side (RS256 + JWKS) when `GOOGLE_CLIENT_ID` is set; development presets only when `NODE_ENV !== 'production'` |
+| Rider sign-in | Firebase email/password: ID token verified server-side (RS256 + Google's secure-token x509 certificates, `iss`/`aud`/`exp`/`sub`) — `docs/FIREBASE_AUTH.md`. Demo presets only when `NODE_ENV !== 'production'` and never with an admin role from the request |
 | Session token | HS256 JWT, 7-day expiry, signed with `JWT_SECRET`; tampering is rejected. No fallback key ships in the repo — production refuses to start without a 32+ char secret, and development uses a random per-process key |
 | Administrator sign-in | Separate `admin_accounts` table, scrypt password hashes with per-account salt, 5-attempt/15-minute lockout, timing-safe comparison |
 | Password rotation | `must_change_password` blocks every write action until changed; set for a production-generated password. The documented `admin$123$` demo credential is refused in production |

@@ -26,7 +26,7 @@
         ${state.account && ['admin', 'moderator'].includes(state.account.role) ? '<button class="btn btn-secondary btn-sm" data-nav="#/admin">🛠️ Admin</button>' : ''}
         <button class="btn btn-secondary btn-sm" data-nav="#/settings" aria-label="Settings">⚙</button>
         <button class="btn btn-secondary btn-sm" id="headerSignOut" aria-label="Sign out">Sign out</button>`
-      : `<button class="btn btn-primary btn-sm" id="headerSignIn">Sign in with Google</button>
+      : `<button class="btn btn-primary btn-sm" id="headerSignIn">Sign in</button>
          <button class="btn btn-safety btn-sm" data-nav="#/safety">🛡️ Safety</button>`;
 
     headerActions.querySelectorAll('[data-nav]').forEach((b) =>
@@ -34,7 +34,10 @@
     );
     const signOut = headerActions.querySelector('#headerSignOut');
     if (signOut)
-      signOut.addEventListener('click', () => {
+      signOut.addEventListener('click', async () => {
+        if (window.RRFirebase && window.RRFirebase.isConfigured && window.RRFirebase.isConfigured()) {
+          await window.RRFirebase.signOut();
+        }
         RR.setToken('');
         state.account = null;
         state.profile = null;
@@ -42,7 +45,7 @@
         location.hash = '#/welcome';
       });
     const signIn = headerActions.querySelector('#headerSignIn');
-    if (signIn) signIn.addEventListener('click', () => window.RRAuth.openGoogleSignIn());
+    if (signIn) signIn.addEventListener('click', () => window.RRAuth.openSignIn());
 
     // i18n labels
     const setText = (id, text) => {
@@ -313,7 +316,7 @@
     wireShell();
     paintChrome();
 
-    // Load public config once (branding, ranks, legal docs, Google client id)
+    // Load public config once (branding, ranks, legal docs, Firebase web config)
     try {
       state.config = await RR.api('/api/config');
       if (state.config && state.config.googleClientId) {
@@ -323,13 +326,24 @@
       /* App still works; screens that need config will retry. */
     }
 
+    // Firebase Authentication: initialise from the server's public web config. When it is not
+    // configured the sign-in screen says so instead of pretending to work.
+    if (window.RRFirebase && state.config && state.config.firebase && state.config.firebase.configured) {
+      window.RRFirebase.configure(state.config.firebase.config);
+    }
+
     if (state.token) {
       try {
         await RR.refreshSession();
       } catch (err) {
         /* keep token; screens will surface the network error with retry */
       }
+      if (!state.account) await restoreSessionFromFirebase();
       registerPushToken();
+    } else {
+      // "Remember me": the Firebase SDK persists the account, so a returning rider can get a
+      // fresh RideRise session without typing a password again.
+      await restoreSessionFromFirebase();
     }
 
     if (!location.hash) location.hash = state.token ? '#/home' : '#/welcome';
@@ -386,7 +400,56 @@
     }
   }
 
-  window.RRApp = { paintChrome, route, boot };
+  let restoringSession = false;
+
+  /**
+   * Re-establish the RideRise session from a persisted Firebase sign-in. This is what makes
+   * "remember me" work across browser restarts and app launches, and it is also how a
+   * disabled/expired Firebase account loses access: the server re-verifies the ID token.
+   */
+  async function restoreSessionFromFirebase() {
+    const fb = window.RRFirebase;
+    if (restoringSession || !fb || !fb.isConfigured || !fb.isConfigured()) return false;
+    if (!fb.currentUser()) return false;
+    restoringSession = true;
+    try {
+      const idToken = await fb.getIdToken(false);
+      if (!idToken) return false;
+      const data = await RR.api('/api/auth/firebase/session', { method: 'POST', body: { idToken } });
+      RR.setToken(data.token);
+      state.account = data.account;
+      state.profile = data.profile;
+      return true;
+    } catch (err) {
+      if (err.code === 'EMAIL_NOT_VERIFIED') {
+        const user = fb.currentUser();
+        fb.rememberPendingVerification(user ? user.email : '');
+      }
+      return false;
+    } finally {
+      restoringSession = false;
+    }
+  }
+
+  // Re-verify with Firebase periodically so a disabled account or an unverified address
+  // cannot ride an old session for days.
+  if (window.RRFirebase && window.RRFirebase.isConfigured && window.RRFirebase.isConfigured()) {
+    setInterval(() => {
+      if (!state.token) return;
+      restoreSessionFromFirebase()
+        .then((restored) => {
+          if (!restored && window.RRFirebase.currentUser() === null) {
+            RR.setToken('');
+            state.account = null;
+            state.profile = null;
+            paintChrome();
+          }
+        })
+        .catch(() => {});
+    }, 45 * 60 * 1000);
+  }
+
+  window.RRApp = { paintChrome, route, boot, restoreSessionFromFirebase };
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', boot);

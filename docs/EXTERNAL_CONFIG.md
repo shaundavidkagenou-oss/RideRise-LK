@@ -21,7 +21,8 @@ pieces your current environment already has.
 | Integration | Accounts / credentials | Typical cost | What it unlocks | What happens without it |
 |---|---|---|---|---|
 | Core app | none | none | Everything local, demo data, all moderation | — |
-| Google Sign-In | Google Cloud project, OAuth **Web** client ID, release SHA-1 | free | Real Google accounts instead of demo presets | Demo sign-in only (`presetAccount`) |
+| **Firebase email/password auth** | Firebase project + web app config; Email/Password provider enabled | free | Real rider accounts, verification email, password reset, persistent sessions | Sign-in form renders **disabled** with an explanation; only the demo presets work |
+| Legacy Google Sign-In | Google Cloud project, OAuth **Web** client ID | free | Not used by the current sign-in screen | Nothing — riders use email/password |
 | Map tiles | OSM (no key) or MapTiler/Mapbox/Thunderforest key | OSM free under usage policy; commercial hosts have free tiers then paid **verify** | Street basemap under guild live markers | Markers still render on a blank grid; map shows an offline/tile-error state |
 | Voice / walkie-talkie relay | TURN service (Twilio NTS, Metered, Cloudflare) or self-hosted coturn | free tier then per-GB **verify** | Calls between devices on mobile networks/NAT | STUN-only: works on some Wi-Fi pairs, fails on many carrier networks |
 | Push notifications | Firebase project + service-account JSON | FCM is free | Server-side delivery to registered devices | In-app realtime + badges only |
@@ -57,7 +58,33 @@ truth about what the running server can actually do.
 
 ---
 
-## 2. Google Sign-In
+## 1b. Firebase Authentication (email + password)
+
+**This is the real sign-in system.** Full walkthrough, error codes and verification checklist:
+[`FIREBASE_AUTH.md`](FIREBASE_AUTH.md).
+
+| Variable | Where to find it | Secret? |
+|---|---|---|
+| `FIREBASE_PROJECT_ID` | Project settings → General → Project ID | no (also derived from the FCM service account) |
+| `FIREBASE_API_KEY` | Project settings → Your apps → Web app → `apiKey` | **no** — a public identifier |
+| `FIREBASE_AUTH_DOMAIN` | `apiKey` block → `authDomain` (defaults to `<project>.firebaseapp.com`) | no |
+| `FIREBASE_APP_ID` | `appId` | no |
+| `FIREBASE_MESSAGING_SENDER_ID` | `messagingSenderId` | no |
+| `JWT_SECRET` | generate with `openssl rand -hex 32` | **yes** — never commit it |
+
+Server-side verification needs no service account: Google publishes the secure-token
+certificates the backend checks. The service-account JSON is only for push (§5 of the setup
+guide) and must never be committed or shipped in the APK.
+
+**Without it:** the sign-in form is disabled and names the missing variable; `/api/auth/firebase/*`
+returns `503 FIREBASE_NOT_CONFIGURED`. Nothing is simulated.
+
+**Free tier:** email/password authentication is free on the Spark plan; only abuse-driven
+quotas apply. **verify** current limits on Firebase's pricing page.
+
+---
+
+## 2. Google Sign-In (legacy — not used by the app)
 
 **What it unlocks:** real Google accounts. Without it, only the built-in demo presets work,
 and `/api/auth/google` with an `idToken` returns a clear "not configured" error rather than

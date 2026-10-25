@@ -18,7 +18,7 @@ window.RIDERISE_I18N = {
     safetyBannerSub: 'Never perform stunts on busy public roads, in moving traffic, or near pedestrians. Practice only in legal, controlled environments.',
     newPostBtn: '+ Publish Post',
     preRideCheckBtn: '7-Point Pre-Ride Check (+25 XP)',
-    signInGoogle: 'Continue with Google',
+    signInGoogle: 'Sign in with email',
     signOut: 'Sign Out'
   },
   si: {

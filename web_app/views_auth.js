@@ -1,17 +1,53 @@
-/* RideRise LK — Welcome, Google authentication (OAuth integration point), Onboarding wizard & legal documents */
+/* RideRise LK — Sign up / sign in (Firebase email + password), onboarding wizard & legal documents */
 (function () {
   'use strict';
   const { api, state, t, escapeHtml, toast, modal, closeModal, logo, skeletonList } = window.RR;
 
-  const SAMPLE_IDENTITIES = [
+  const DEMO_IDENTITIES = [
     { key: 'kasun', email: 'kasun.perera.demo@gmail.com', name: 'Kasun Perera', note: 'Rider demo · Stunt Specialist' },
     { key: 'roshan', email: 'roshan.fernando.demo@gmail.com', name: 'Roshan Fernando', note: 'Rider demo · Guild moderator' },
     { key: 'dilshan_minor', email: 'dilshan.student.demo@gmail.com', name: 'Dilshan S.', note: '16–17 demo · minor safeguards on' },
     { key: 'admin', email: 'nethmi.admin@shaundavidstudios.lk', name: 'Nethmi Jayawardena', note: 'Studio admin · moderation tools' }
   ];
 
+  let authMode = 'signin'; // 'signin' | 'signup' | 'complete-profile'
+  let pendingSignup = null; // { username, displayName } kept only in memory for safe retries
+  let availabilityTimer = null;
+
+  function firebase() {
+    return window.RRFirebase || null;
+  }
+
+  function firebaseReady() {
+    return Boolean(firebase() && firebase().isConfigured());
+  }
+
+  function firebaseConfigFromState() {
+    const cfg = state.config && state.config.firebase;
+    return cfg && cfg.configured ? cfg.config : null;
+  }
+
+  /* --------------------------------- Welcome -------------------------------- */
+
   async function renderWelcome(viewport) {
-    let legalVersions = { terms: '1.0-draft', privacy: '1.0-draft', guidelines: '1.0' };
+    if (!state.config) {
+      try {
+        state.config = await api('/api/config');
+      } catch (err) {
+        /* the form still renders; submitting will surface the network error */
+      }
+    }
+    if (firebase() && !firebase().isConfigured() && firebaseConfigFromState()) {
+      firebase().configure(firebaseConfigFromState());
+    }
+    // A rider who signed up but has not clicked the verification link yet lands here.
+    const pending = firebase() ? firebase().pendingVerification() : null;
+    if (pending && !state.token) {
+      renderVerifyGate(viewport, pending.email);
+      return;
+    }
+
+    const demoEnabled = Boolean(state.config && state.config.demoSignInEnabled);
     viewport.innerHTML = `
       <section class="welcome-hero">
         <div class="welcome-badge-glow">${logo(196, 'welcome-badge')}</div>
@@ -20,6 +56,28 @@
           <h1 class="welcome-title">RIDERISE <span class="lk-gold">LK</span></h1>
           <p class="welcome-tagline">RIDE / STUNT / CONNECT</p>
           <p class="welcome-sub">A community, learning and bike-build platform for Sri Lankan bicycle stunt riders — built by <strong>Shaun David Studios</strong>.</p>
+
+          <div class="auth-card" id="authCard">
+            <div class="auth-tabs" role="tablist" aria-label="Sign in or create an account">
+              <button type="button" role="tab" class="auth-tab" data-auth-tab="signin" aria-selected="${authMode === 'signin'}">Sign in</button>
+              <button type="button" role="tab" class="auth-tab" data-auth-tab="signup" aria-selected="${authMode === 'signup'}">Create account</button>
+            </div>
+            <div id="authFormHost" class="auth-form-host"></div>
+            <p class="auth-status" id="authStatus" role="status" aria-live="polite"></p>
+            ${
+              demoEnabled
+                ? `<div class="auth-demo-row">
+                     <span>Evaluating the build?</span>
+                     <button type="button" class="link-inline" id="demoSignInBtn">Use a demo account</button>
+                   </div>`
+                : ''
+            }
+            <p class="auth-fineprint">
+              Email and password accounts are secured by <strong>Firebase Authentication</strong>.
+              RideRise LK never stores or logs your password. You must be <strong>at least 16 years old</strong>.
+            </p>
+          </div>
+
           <ul class="welcome-features">
             <li><span>🛡️</span> Server-validated rider ranks &amp; safe progression</li>
             <li><span>⚡</span> 21-module stunt learning library with quizzes</li>
@@ -30,16 +88,9 @@
             <li><span>🎙️</span> Guild voice rooms and press-to-talk walkie-talkie</li>
             <li><span>🎓</span> Structured pathways plus a maintenance track</li>
           </ul>
-          <div class="welcome-actions">
-            <button type="button" class="btn btn-google" id="googleSignInBtn">
-              <span class="google-g" aria-hidden="true">G</span> Continue with Google
-            </button>
-            <button type="button" class="btn btn-secondary" id="welcomeSafetyBtn">Safety Centre</button>
-            <button type="button" class="btn btn-secondary" id="welcomeAdminBtn">Studio Admin</button>
-          </div>
+
           <p class="welcome-fineprint">
-            You must be <strong>at least 16 years old</strong>. RideRise LK never asks for your Google password —
-            authentication uses Google's OAuth consent screen. By continuing you accept the
+            By continuing you accept the
             <button class="link-inline" data-legal="terms_of_service">Terms</button>,
             <button class="link-inline" data-legal="privacy_policy">Privacy Policy</button>,
             <button class="link-inline" data-legal="community_guidelines">Community Guidelines</button> and
@@ -52,8 +103,12 @@
             </div>
             <button class="btn btn-safety btn-sm" data-legal="safety_notice">Read the full notice</button>
           </div>
+          <div class="welcome-actions" style="margin-top:14px">
+            <button type="button" class="btn btn-secondary" id="welcomeSafetyBtn">Safety Centre</button>
+            <button type="button" class="btn btn-secondary" id="welcomeAdminBtn">Studio Admin</button>
+          </div>
           <p class="welcome-fineprint" style="opacity:.75">
-            Draft legal documents v${escapeHtml(legalVersions.terms)} — subject to legal review by qualified Sri Lankan counsel.
+            Draft legal documents — subject to legal review by qualified Sri Lankan counsel.
           </p>
         </div>
       </section>`;
@@ -67,48 +122,597 @@
     viewport.querySelectorAll('[data-legal]').forEach((el) =>
       el.addEventListener('click', () => openLegalDocument(el.dataset.legal))
     );
-    viewport.querySelector('#googleSignInBtn').addEventListener('click', openGoogleSignIn);
+    viewport.querySelectorAll('[data-auth-tab]').forEach((tab) =>
+      tab.addEventListener('click', () => {
+        authMode = tab.dataset.authTab;
+        paintAuthTabs(viewport);
+        mountAuthForm(viewport);
+      })
+    );
+    const demoBtn = viewport.querySelector('#demoSignInBtn');
+    if (demoBtn) demoBtn.addEventListener('click', openDemoSignIn);
+
+    paintAuthTabs(viewport);
+    mountAuthForm(viewport);
   }
 
-  /* -------- Google OAuth integration point (production: Google Identity Services) ------- */
-  function loadGoogleIdentityServices() {
-    if (window.google && window.google.accounts && window.google.accounts.id) {
-      return Promise.resolve(true);
-    }
-    return new Promise((resolve) => {
-      const existing = document.getElementById('gsiClient');
-      if (existing) {
-        existing.addEventListener('load', () => resolve(!!(window.google && window.google.accounts)));
-        existing.addEventListener('error', () => resolve(false));
-        return;
-      }
-      const script = document.createElement('script');
-      script.id = 'gsiClient';
-      script.src = 'https://accounts.google.com/gsi/client';
-      script.async = true;
-      script.defer = true;
-      script.onload = () => resolve(!!(window.google && window.google.accounts));
-      script.onerror = () => resolve(false);
-      document.head.appendChild(script);
-      setTimeout(() => resolve(!!(window.google && window.google.accounts)), 6000);
+  function paintAuthTabs(viewport) {
+    viewport.querySelectorAll('[data-auth-tab]').forEach((tab) => {
+      const active = tab.dataset.authTab === authMode;
+      tab.classList.toggle('active', active);
+      tab.setAttribute('aria-selected', String(active));
     });
   }
 
-  function openGoogleSignIn() {
-    const configured = !!(window.RR_GOOGLE_CLIENT_ID && String(window.RR_GOOGLE_CLIENT_ID).trim());
-    if (configured) {
-      openRealGoogleSignIn();
+  function authStatus(viewport, message, kind) {
+    const el = viewport.querySelector('#authStatus');
+    if (!el) return;
+    el.textContent = message || '';
+    el.className = `auth-status${message ? ' is-visible' : ''}${kind ? ` is-${kind}` : ''}`;
+  }
+
+  function mountAuthForm(viewport) {
+    const host = viewport.querySelector('#authFormHost');
+    if (!host) return;
+    authStatus(viewport, '');
+    if (authMode === 'signup') renderSignUpForm(host, viewport);
+    else renderSignInForm(host, viewport);
+  }
+
+  function firebaseUnavailableHtml() {
+    const availability = state.config && state.config.firebase;
+    const detail = availability && availability.message ? availability.message : 'Firebase Authentication is not available.';
+    return `<div class="auth-notice" role="note">
+        <strong>Email sign-in is not configured on this server yet.</strong>
+        <p>${escapeHtml(detail)} The studio administrator must add the Firebase project keys
+        (<code>FIREBASE_PROJECT_ID</code>, <code>FIREBASE_API_KEY</code>) — see
+        <code>docs/FIREBASE_AUTH.md</code>. Nothing is simulated: sign-in stays disabled until a real
+        Firebase project is connected.</p>
+      </div>`;
+  }
+
+  function renderSignInForm(host, viewport) {
+    const ready = firebaseReady();
+    if (!ready && (!firebase() || !firebase().sdkAvailable())) {
+      host.innerHTML = firebaseUnavailableHtml();
       return;
     }
+    host.innerHTML = `
+      ${ready ? '' : firebaseUnavailableHtml()}
+      <fieldset class="auth-fieldset" ${ready ? '' : 'disabled'} style="border:0;padding:0;margin:0">
+      <form id="signInForm" class="auth-form" novalidate>
+        <div class="form-group">
+          <label class="form-label" for="siEmail">Email address</label>
+          <input class="form-input" id="siEmail" name="email" type="email" autocomplete="email" inputmode="email" required />
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="siPassword">Password</label>
+          <div class="auth-password">
+            <input class="form-input" id="siPassword" name="password" type="password" autocomplete="current-password" required />
+            <button type="button" class="auth-pw-toggle" data-toggle-password="siPassword" aria-label="Show password">Show</button>
+          </div>
+        </div>
+        <button class="btn btn-primary btn-block" id="siSubmit" type="submit">Sign in</button>
+        <div class="auth-links">
+          <button type="button" class="link-inline" id="forgotPasswordBtn">Forgot your password?</button>
+          <button type="button" class="link-inline" id="toSignUpBtn">Create an account</button>
+        </div>
+      </form>
+      </fieldset>`;
+
+    host.querySelectorAll('[data-toggle-password]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const input = host.querySelector(`#${btn.dataset.togglePassword}`);
+        const show = input.type === 'password';
+        input.type = show ? 'text' : 'password';
+        btn.textContent = show ? 'Hide' : 'Show';
+        btn.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
+      });
+    });
+    host.querySelector('#forgotPasswordBtn').addEventListener('click', () => openForgotPassword(viewport));
+    host.querySelector('#toSignUpBtn').addEventListener('click', () => {
+      authMode = 'signup';
+      paintAuthTabs(viewport);
+      mountAuthForm(viewport);
+    });
+    host.querySelector('#signInForm').addEventListener('submit', (event) => {
+      event.preventDefault();
+      submitSignIn(viewport, event.currentTarget);
+    });
+  }
+
+  function passwordPolicyHtml() {
+    return `<p class="auth-hint" id="suPasswordHint">At least 10 characters, including a letter and a number.</p>`;
+  }
+
+  function renderSignUpForm(host, viewport) {
+    const ready = firebaseReady();
+    if (!ready && (!firebase() || !firebase().sdkAvailable())) {
+      host.innerHTML = firebaseUnavailableHtml();
+      return;
+    }
+    host.innerHTML = `
+      ${ready ? '' : firebaseUnavailableHtml()}
+      <fieldset class="auth-fieldset" ${ready ? '' : 'disabled'} style="border:0;padding:0;margin:0">
+      <form id="signUpForm" class="auth-form" novalidate>
+        <div class="form-group">
+          <label class="form-label" for="suUsername">Username</label>
+          <input class="form-input" id="suUsername" name="username" type="text" autocomplete="username"
+                 spellcheck="false" maxlength="24" placeholder="e.g. kasun_bmx" required />
+          <p class="auth-hint" id="suUsernameHint">3–24 characters: lowercase letters, numbers or underscores.</p>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="suEmail">Email address</label>
+          <input class="form-input" id="suEmail" name="email" type="email" autocomplete="email" inputmode="email" required />
+          <p class="auth-hint">We email a verification link. Community features unlock once it is confirmed.</p>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="suPassword">Password</label>
+          <div class="auth-password">
+            <input class="form-input" id="suPassword" name="password" type="password" autocomplete="new-password" required />
+            <button type="button" class="auth-pw-toggle" data-toggle-password="suPassword" aria-label="Show password">Show</button>
+          </div>
+          ${passwordPolicyHtml()}
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="suConfirm">Confirm password</label>
+          <div class="auth-password">
+            <input class="form-input" id="suConfirm" name="confirm" type="password" autocomplete="new-password" required />
+            <button type="button" class="auth-pw-toggle" data-toggle-password="suConfirm" aria-label="Show password">Show</button>
+          </div>
+        </div>
+        <button class="btn btn-primary btn-block" id="suSubmit" type="submit">Create my account</button>
+        <div class="auth-links">
+          <button type="button" class="link-inline" id="toSignInBtn">I already have an account</button>
+        </div>
+      </form>
+      </fieldset>`;
+
+    const usernameInput = host.querySelector('#suUsername');
+    usernameInput.addEventListener('input', () => scheduleUsernameCheck(host, viewport, usernameInput.value));
+    host.querySelectorAll('[data-toggle-password]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const input = host.querySelector(`#${btn.dataset.togglePassword}`);
+        const show = input.type === 'password';
+        input.type = show ? 'text' : 'password';
+        btn.textContent = show ? 'Hide' : 'Show';
+      });
+    });
+    host.querySelector('#toSignInBtn').addEventListener('click', () => {
+      authMode = 'signin';
+      paintAuthTabs(viewport);
+      mountAuthForm(viewport);
+    });
+    host.querySelector('#signUpForm').addEventListener('submit', (event) => {
+      event.preventDefault();
+      submitSignUp(viewport, event.currentTarget);
+    });
+  }
+
+  function scheduleUsernameCheck(host, viewport, value) {
+    if (availabilityTimer) clearTimeout(availabilityTimer);
+    const hint = host.querySelector('#suUsernameHint');
+    const username = String(value || '').trim().toLowerCase();
+    if (!username) {
+      hint.className = 'auth-hint';
+      hint.textContent = '3–24 characters: lowercase letters, numbers or underscores.';
+      return;
+    }
+    const local = firebase().validateUsername(username);
+    if (!local.ok) {
+      hint.className = 'auth-hint is-error';
+      hint.textContent = local.message;
+      return;
+    }
+    hint.className = 'auth-hint';
+    hint.textContent = 'Checking availability…';
+    availabilityTimer = setTimeout(async () => {
+      try {
+        const result = await api(`/api/auth/username-available?username=${encodeURIComponent(username)}`);
+        if (result.available) {
+          hint.className = 'auth-hint is-ok';
+          hint.textContent = `@${result.username} is available.`;
+        } else {
+          hint.className = 'auth-hint is-error';
+          hint.innerHTML = `@${escapeHtml(result.username)} is already taken.${
+            (result.suggestions || []).length
+              ? ` Try ${result.suggestions.map((s) => `<button type="button" class="link-inline" data-use-username="${escapeHtml(s)}">${escapeHtml(s)}</button>`).join(', ')}.`
+              : ''
+          }`;
+          hint.querySelectorAll('[data-use-username]').forEach((btn) =>
+            btn.addEventListener('click', () => {
+              const input = host.querySelector('#suUsername');
+              input.value = btn.dataset.useUsername;
+              scheduleUsernameCheck(host, viewport, input.value);
+            })
+          );
+        }
+      } catch (err) {
+        hint.className = 'auth-hint';
+        hint.textContent = 'Availability could not be checked right now — we will check again when you submit.';
+      }
+    }, 450);
+  }
+
+  /* ------------------------------ sign in / up ------------------------------ */
+
+  function setBusy(viewport, busy, label) {
+    const button = viewport.querySelector('#siSubmit, #suSubmit');
+    if (!button) return;
+    if (busy) {
+      button.dataset.label = button.textContent;
+      button.disabled = true;
+      button.textContent = label || 'Please wait…';
+    } else {
+      button.disabled = false;
+      if (button.dataset.label) button.textContent = button.dataset.label;
+    }
+  }
+
+  async function submitSignIn(viewport, form) {
+    const email = form.querySelector('#siEmail').value.trim();
+    const password = form.querySelector('#siPassword').value;
+    const fb = firebase();
+    if (!fb.isEmail(email)) return authStatus(viewport, 'Enter a valid email address.', 'error');
+    if (!password) return authStatus(viewport, 'Enter your password.', 'error');
+
+    setBusy(viewport, true, 'Signing in…');
+    authStatus(viewport, 'Contacting Firebase…');
+    try {
+      await fb.signIn(email, password);
+      authStatus(viewport, 'Signing you in…');
+      await exchangeFirebaseSession(viewport, { from: 'signin' });
+    } catch (err) {
+      authStatus(viewport, err.message || 'Sign-in failed.', 'error');
+      setBusy(viewport, false);
+    }
+  }
+
+  async function submitSignUp(viewport, form) {
+    const fb = firebase();
+    const username = form.querySelector('#suUsername').value.trim().toLowerCase();
+    const email = form.querySelector('#suEmail').value.trim();
+    const password = form.querySelector('#suPassword').value;
+    const confirm = form.querySelector('#suConfirm').value;
+
+    const usernameCheck = fb.validateUsername(username);
+    if (!usernameCheck.ok) return authStatus(viewport, usernameCheck.message, 'error');
+    if (!fb.isEmail(email)) return authStatus(viewport, 'Enter a valid email address.', 'error');
+    const passwordIssue = fb.passwordProblem(password);
+    if (passwordIssue) return authStatus(viewport, passwordIssue, 'error');
+    if (password !== confirm) return authStatus(viewport, 'The two passwords do not match.', 'error');
+
+    setBusy(viewport, true, 'Creating account…');
+    authStatus(viewport, 'Checking that your username is free…');
+    try {
+      const availability = await api(`/api/auth/username-available?username=${encodeURIComponent(username)}`);
+      if (!availability.available) {
+        authStatus(viewport, availability.message || 'That username is taken.', 'error');
+        setBusy(viewport, false);
+        return;
+      }
+    } catch (err) {
+      authStatus(viewport, 'Could not reach the server to check your username. Check your connection and try again.', 'error');
+      setBusy(viewport, false);
+      return;
+    }
+
+    authStatus(viewport, 'Creating your Firebase account…');
+    try {
+      await fb.signUp(email, password);
+    } catch (err) {
+      authStatus(viewport, err.message, 'error');
+      setBusy(viewport, false);
+      return;
+    }
+
+    // Best effort: a failed verification email must not lose the new Firebase account.
+    try {
+      await fb.sendVerificationEmail();
+    } catch (err) {
+      toast('Account created, but the verification email could not be sent yet. Use “Resend email” on the next screen.', 'error', 7000);
+    }
+    fb.rememberPendingVerification(email);
+    pendingSignup = { username, email };
+
+    authStatus(viewport, 'Saving your RideRise LK profile…');
+    await createProfile(viewport, { username });
+  }
+
+  /** Create (or retry creating) the SQLite profile for the signed-in Firebase user. */
+  async function createProfile(viewport, { username }) {
+    const fb = firebase();
+    let idToken;
+    try {
+      idToken = await fb.getIdToken(true);
+    } catch (err) {
+      authStatus(viewport, 'Your session could not be read. Sign in again to finish setting up.', 'error');
+      setBusy(viewport, false);
+      return;
+    }
+    try {
+      const data = await api('/api/auth/firebase/signup', {
+        method: 'POST',
+        body: { idToken, username, displayName: username }
+      });
+      pendingSignup = null;
+      fb.clearPendingVerification();
+      await finishSession(data);
+    } catch (err) {
+      if (err.code === 'EMAIL_NOT_VERIFIED') {
+        pendingSignup = { username };
+        renderVerifyGate(viewport, err.payload && err.payload.email ? err.payload.email : (fb.currentUser() || {}).email || '');
+        return;
+      }
+      if (err.code === 'USERNAME_TAKEN') {
+        authStatus(viewport, err.message, 'error');
+        setBusy(viewport, false);
+        return;
+      }
+      if (err.code === 'PROFILE_CREATE_FAILED' || err.code === 'PROFILE_CONFLICT') {
+        pendingSignup = { username };
+        authStatus(
+          viewport,
+          `${err.message} Your username is reserved — press “Retry profile setup” to try again.`,
+          'error'
+        );
+        showRetryProfileButton(viewport, username);
+        setBusy(viewport, false);
+        return;
+      }
+      if (err.code === 'ACCOUNT_LINK_REQUIRED') {
+        authStatus(viewport, err.message, 'error');
+        setBusy(viewport, false);
+        return;
+      }
+      authStatus(viewport, err.message || 'Your profile could not be created.', 'error');
+      setBusy(viewport, false);
+    }
+  }
+
+  function showRetryProfileButton(viewport, username) {
+    const host = viewport.querySelector('#authFormHost');
+    if (!host || host.querySelector('#retryProfile')) return;
+    const button = document.createElement('button');
+    button.id = 'retryProfile';
+    button.type = 'button';
+    button.className = 'btn btn-primary btn-block';
+    button.style.marginTop = '10px';
+    button.textContent = 'Retry profile setup';
+    button.addEventListener('click', () => {
+      button.disabled = true;
+      button.textContent = 'Retrying…';
+      createProfile(viewport, { username: username || (pendingSignup && pendingSignup.username) || '' });
+    });
+    host.appendChild(button);
+  }
+
+  /** Exchange the current Firebase ID token for a RideRise session. */
+  async function exchangeFirebaseSession(viewport, options = {}) {
+    const fb = firebase();
+    let idToken;
+    try {
+      idToken = await fb.getIdToken(true);
+    } catch (err) {
+      authStatus(viewport, 'Your Firebase session expired. Sign in again.', 'error');
+      return null;
+    }
+    try {
+      const data = await api('/api/auth/firebase/session', { method: 'POST', body: { idToken } });
+      fb.clearPendingVerification();
+      await finishSession(data);
+      return data;
+    } catch (err) {
+      if (err.code === 'EMAIL_NOT_VERIFIED') {
+        const email = (err.payload && err.payload.email) || (fb.currentUser() || {}).email || '';
+        fb.rememberPendingVerification(email);
+        renderVerifyGate(viewport, email);
+        return null;
+      }
+      if (err.code === 'PROFILE_REQUIRED') {
+        const email = (err.payload && err.payload.email) || (fb.currentUser() || {}).email || '';
+        renderCompleteProfile(viewport, email);
+        return null;
+      }
+      authStatus(viewport, err.message || 'Sign-in could not be completed.', 'error');
+      setBusy(viewport, false);
+      return null;
+    }
+  }
+
+  function renderCompleteProfile(viewport, email) {
+    viewport.innerHTML = `
+      <section class="welcome-hero" style="grid-template-columns:1fr;max-width:640px;margin:0 auto">
+        <div class="welcome-copy">
+          <span class="pill-badge pill-orange">One more step</span>
+          <h1 class="welcome-title" style="font-size:1.6rem">Finish your rider profile</h1>
+          <p class="welcome-sub">Your Firebase account <strong>${escapeHtml(email)}</strong> does not have a RideRise LK profile yet.
+          Choose the username riders will see. Nothing is duplicated: this completes the account you already created.</p>
+          <div class="auth-card">
+            <form id="completeForm" class="auth-form" novalidate>
+              <div class="form-group">
+                <label class="form-label" for="cpUsername">Username</label>
+                <input class="form-input" id="cpUsername" type="text" maxlength="24" spellcheck="false" required />
+                <p class="auth-hint">3–24 characters: lowercase letters, numbers or underscores.</p>
+              </div>
+              <button class="btn btn-primary btn-block" type="submit" id="cpSubmit">Create my profile</button>
+            </form>
+            <p class="auth-status" id="cpStatus" role="status" aria-live="polite"></p>
+          </div>
+        </div>
+      </section>`;
+    viewport.querySelector('#completeForm').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const status = viewport.querySelector('#cpStatus');
+      const username = viewport.querySelector('#cpUsername').value.trim().toLowerCase();
+      const check = firebase().validateUsername(username);
+      if (!check.ok) {
+        status.textContent = check.message;
+        status.className = 'auth-status is-visible is-error';
+        return;
+      }
+      viewport.querySelector('#cpSubmit').disabled = true;
+      status.textContent = 'Creating your profile…';
+      status.className = 'auth-status is-visible';
+      await createProfile(viewport, { username });
+    });
+  }
+
+  /* ----------------------------- verification gate -------------------------- */
+
+  function renderVerifyGate(viewport, email) {
+    const fb = firebase();
+    const address = email || (fb && fb.currentUser() ? fb.currentUser().email : '') || '';
+    viewport.innerHTML = `
+      <section class="welcome-hero" style="grid-template-columns:1fr;max-width:640px;margin:0 auto">
+        <div class="welcome-copy">
+          <div class="verify-badge" aria-hidden="true">✉️</div>
+          <h1 class="welcome-title" style="font-size:1.6rem">Verify your email</h1>
+          <p class="welcome-sub">We sent a verification link to <strong>${escapeHtml(address)}</strong>.
+          Open it, then come back here. Community features — the feed, guilds, messages and events — stay
+          locked until your address is confirmed.</p>
+          <div class="auth-card">
+            <div class="verify-actions">
+              <button class="btn btn-primary btn-block" id="verifyContinue">I've verified my email</button>
+              <button class="btn btn-secondary btn-block" id="verifyResend">Resend verification email</button>
+              <button class="btn btn-secondary btn-block" id="verifySignOut">Use a different account</button>
+            </div>
+            <p class="auth-status" id="verifyStatus" role="status" aria-live="polite"></p>
+            <p class="auth-fineprint">The link can take a minute to arrive. Check spam if it does not.
+              Email verification is required by Firebase Authentication and is enforced by the RideRise LK server.</p>
+          </div>
+        </div>
+      </section>`;
+
+    const status = (message, kind) => {
+      const el = viewport.querySelector('#verifyStatus');
+      el.textContent = message || '';
+      el.className = `auth-status${message ? ' is-visible' : ''}${kind ? ` is-${kind}` : ''}`;
+    };
+
+    if (!fb || !fb.isConfigured() || !fb.currentUser()) {
+      status('Sign in again to request another verification email.', 'error');
+      viewport.querySelector('#verifyContinue').disabled = true;
+      viewport.querySelector('#verifyResend').disabled = true;
+    }
+
+    viewport.querySelector('#verifyContinue').addEventListener('click', async () => {
+      const button = viewport.querySelector('#verifyContinue');
+      button.disabled = true;
+      status('Checking with Firebase…');
+      try {
+        const user = await fb.reloadUser();
+        if (!user || !user.emailVerified) {
+          status('Not verified yet. Open the link in your inbox, then press this button again.', 'error');
+          button.disabled = false;
+          return;
+        }
+        await fb.getIdToken(true);
+        status('Verified! Restoring your profile…');
+        if (pendingSignup && pendingSignup.username) {
+          await createProfile(viewport, { username: pendingSignup.username });
+        } else {
+          await exchangeFirebaseSession(viewport, { from: 'verify' });
+        }
+      } catch (err) {
+        status(err.message || 'Verification could not be checked. Try again.', 'error');
+        button.disabled = false;
+      }
+    });
+
+    viewport.querySelector('#verifyResend').addEventListener('click', async (event) => {
+      const button = event.currentTarget;
+      button.disabled = true;
+      status('Sending another verification email…');
+      try {
+        await fb.sendVerificationEmail();
+        status(`Sent. Check ${address} (and the spam folder). You can resend again in 60 seconds.`);
+        setTimeout(() => {
+          if (button.isConnected) button.disabled = false;
+        }, 60000);
+      } catch (err) {
+        status(err.message || 'The email could not be sent. Try again in a minute.', 'error');
+        button.disabled = false;
+      }
+    });
+
+    viewport.querySelector('#verifySignOut').addEventListener('click', async () => {
+      if (fb) await fb.signOut();
+      if (fb) fb.clearPendingVerification();
+      pendingSignup = null;
+      authMode = 'signin';
+      renderWelcome(viewport);
+    });
+  }
+
+  async function finishSession(data) {
+    window.RR.setToken(data.token);
+    state.account = data.account;
+    state.profile = data.profile;
+    try {
+      await window.RR.refreshSession();
+    } catch (err) {
+      /* the session works; counters will catch up on the next poll */
+    }
+    toast(data.newAccount ? 'Welcome to RideRise LK. Check your inbox to verify your email.' : 'Signed in.', 'success');
+    if (window.RRApp) window.RRApp.paintChrome();
+    location.hash = data.onboardingRequired ? '#/onboarding' : '#/home';
+    if (window.RRApp) window.RRApp.route();
+  }
+
+  /* ------------------------------- password reset --------------------------- */
+
+  function openForgotPassword(viewport) {
+    const fb = firebase();
+    const prefilled = (viewport && viewport.querySelector && viewport.querySelector('#siEmail') ? viewport.querySelector('#siEmail').value : '').trim();
     modal({
-      title: 'Sign in with Google',
+      title: 'Reset your password',
+      size: '520px',
+      body: `<p class="muted" style="font-size:.88rem">Enter the email address you signed up with. Firebase emails you a secure reset link; RideRise LK never sees or stores your password.</p>
+        <div class="form-group">
+          <label class="form-label" for="fpEmail">Email address</label>
+          <input class="form-input" id="fpEmail" type="email" autocomplete="email" value="${escapeHtml(prefilled)}" />
+        </div>
+        <p class="auth-status" id="fpStatus" role="status" aria-live="polite"></p>`,
+      footer: '<button class="btn btn-secondary" data-modal-close="1">Cancel</button><button class="btn btn-primary" id="fpSend">Send reset link</button>',
+      onMount(root) {
+        const status = (message, kind) => {
+          const el = root.querySelector('#fpStatus');
+          el.textContent = message || '';
+          el.className = `auth-status${message ? ' is-visible' : ''}${kind ? ` is-${kind}` : ''}`;
+        };
+        root.querySelector('[data-modal-close]').addEventListener('click', closeModal);
+        root.querySelector('#fpSend').addEventListener('click', async () => {
+          const email = root.querySelector('#fpEmail').value.trim();
+          if (!fb || !fb.isEmail(email)) return status('Enter a valid email address.', 'error');
+          const button = root.querySelector('#fpSend');
+          button.disabled = true;
+          status('Asking Firebase to send the reset email…');
+          try {
+            await fb.sendPasswordReset(email);
+            status('Reset link sent. Check your inbox and spam folder.', 'ok');
+            toast('Password reset email sent.', 'success');
+          } catch (err) {
+            status(err.message || 'The reset email could not be sent.', 'error');
+            button.disabled = false;
+          }
+        });
+      }
+    });
+  }
+
+  /* --------------------------------- demo sign-in --------------------------- */
+
+  function openDemoSignIn() {
+    modal({
+      title: 'Demo sign-in (development)',
       size: '560px',
       body: `
         <div class="oauth-sheet">
-          <div class="oauth-brand"><span class="google-g">G</span><span>Sign in with Google</span></div>
-          <p class="oauth-sub">Choose an account to continue to <strong>RideRise LK</strong>. RideRise LK will receive your name, email address and profile picture to create your rider profile. Your password is never shared with this app.</p>
+          <p class="oauth-sub">These seeded accounts exist only for evaluating the build. They use the
+            legacy sandbox bridge, <strong>not</strong> Firebase Authentication, and the server refuses them in production.</p>
           <div class="oauth-accounts">
-            ${SAMPLE_IDENTITIES.map(
+            ${DEMO_IDENTITIES.map(
               (id) => `<button type="button" class="oauth-account" data-email="${escapeHtml(id.email)}" data-preset="${id.key}">
                 <span class="oauth-avatar">${escapeHtml(id.name.slice(0, 1))}</span>
                 <span class="oauth-account-text">
@@ -119,134 +723,65 @@
               </button>`
             ).join('')}
           </div>
-          <div class="oauth-divider"><span>or use another Google address</span></div>
-          <form id="oauthCustomForm" class="oauth-form">
-            <label class="form-label" for="oauthEmail">Google account email</label>
-            <input class="form-input" id="oauthEmail" type="email" placeholder="you@gmail.com" autocomplete="email" required />
-            <button class="btn btn-primary" type="submit" style="margin-top:10px">Continue</button>
-          </form>
-          <div class="oauth-error-cases">
-            <span>Test authentication states:</span>
-            <button type="button" class="link-inline" data-sim="cancelled">Cancel</button> ·
-            <button type="button" class="link-inline" data-sim="network_unavailable">Network failure</button> ·
-            <button type="button" class="link-inline" data-sim="invalid_credential">Invalid credential</button>
-          </div>
-          <p class="oauth-note">
-            ${
-              configured
-                ? 'Google Identity Services client ID detected. Production builds exchange a Google ID token through the backend verifier.'
-                : 'No <code>GOOGLE_CLIENT_ID</code> is configured for this deployment, so the sandbox OAuth bridge issues the same server-side session a real ID-token exchange would. See <code>docs/EXTERNAL_CONFIG.md</code>.'
-            }
-          </p>
+          <p class="oauth-note">Real accounts use <strong>Firebase email and password</strong> — create one from the main form.</p>
         </div>`,
       onMount(root) {
         root.querySelectorAll('[data-preset]').forEach((btn) =>
-          btn.addEventListener('click', () => completeSignIn({ email: btn.dataset.email, presetAccount: btn.dataset.preset }))
-        );
-        root.querySelector('#oauthCustomForm').addEventListener('submit', (e) => {
-          e.preventDefault();
-          const email = root.querySelector('#oauthEmail').value.trim();
-          if (!email) return;
-          completeSignIn({ email });
-        });
-        root.querySelectorAll('[data-sim]').forEach((btn) =>
-          btn.addEventListener('click', () => completeSignIn({ simulateError: btn.dataset.sim }))
+          btn.addEventListener('click', () => completeDemoSignIn({ email: btn.dataset.email, presetAccount: btn.dataset.preset }))
         );
       }
     });
   }
 
-  async function openRealGoogleSignIn() {
-    modal({
-      title: 'Sign in with Google',
-      size: '520px',
-      body: `<div class="oauth-sheet">
-          <div class="oauth-brand"><span class="google-g">G</span><span>Google Identity Services</span></div>
-          <p class="oauth-sub">RideRise LK uses Google's official consent screen. Your password is entered only on Google's domain and is never seen by this app.</p>
-          <div id="gsiButtonHost" style="min-height:48px;display:flex;justify-content:center"></div>
-          <div id="gsiStatus" class="hint">Connecting to Google…</div>
-        </div>`,
-      onMount(root) {
-        const host = root.querySelector('#gsiButtonHost');
-        const status = root.querySelector('#gsiStatus');
-        loadGoogleIdentityServices().then((available) => {
-          if (!available || !window.google || !window.google.accounts) {
-            status.innerHTML =
-              'Google Identity Services could not be reached from this environment. Configure <code>GOOGLE_CLIENT_ID</code> and host the app over HTTPS — see <code>docs/GOOGLE_SIGNIN.md</code>.';
-            return;
-          }
-          window.google.accounts.id.initialize({
-            client_id: String(window.RR_GOOGLE_CLIENT_ID).trim(),
-            callback: async (response) => {
-              try {
-                status.textContent = 'Verifying Google credential with the RideRise LK server…';
-                const data = await api('/api/auth/google', { method: 'POST', body: { idToken: response.credential } });
-                window.RR.setToken(data.token);
-                state.account = data.account;
-                state.profile = data.profile;
-                closeModal();
-                toast(`Signed in as ${data.account.email}`, 'success');
-                if (data.onboardingRequired) location.hash = '#/onboarding';
-                else {
-                  await window.RR.refreshSession();
-                  location.hash = '#/home';
-                }
-              } catch (err) {
-                status.textContent = err.message;
-                toast(err.message, 'error', 6000);
-              }
-            }
-          });
-          window.google.accounts.id.renderButton(host, {
-            theme: 'filled_black',
-            size: 'large',
-            shape: 'pill',
-            text: 'continue_with',
-            width: 320
-          });
-          status.textContent = 'Choose your Google account to continue.';
-        });
-      }
-    });
-  }
-
-  async function completeSignIn(payload) {
-    const buttons = document.querySelectorAll('#modalRoot button');
-    buttons.forEach((b) => (b.disabled = true));
+  async function completeDemoSignIn(payload) {
+    document.querySelectorAll('#modalRoot button').forEach((b) => (b.disabled = true));
     try {
       const data = await api('/api/auth/google', { method: 'POST', body: payload });
-      window.RR.setToken(data.token);
-      state.account = data.account;
-      state.profile = data.profile;
       closeModal();
-      toast(`Signed in as ${data.account.email}`, 'success');
-      if (data.onboardingRequired) {
-        location.hash = '#/onboarding';
-      } else {
-        await window.RR.refreshSession();
-        location.hash = '#/home';
-      }
+      await finishSession(data);
     } catch (err) {
       closeModal();
-      if (err.code === 'AUTH_CANCELLED') {
-        toast(err.message, 'info');
-      } else {
-        modal({
-          title: err.code === 'AUTH_UNAVAILABLE' ? 'Google sign-in unavailable' : 'Sign-in failed',
-          size: '520px',
-          body: `<p style="color:var(--text-secondary);font-size:.9rem">${escapeHtml(err.message)}</p>
-            <p class="oauth-note" style="margin-top:10px">Nothing was charged or created. You can retry whenever you are ready.</p>`,
-          footer: `<button class="btn btn-primary" id="retryGoogle">Retry sign-in</button>
-                   <button class="btn btn-secondary" data-modal-close="1">Close</button>`,
-          onMount(root) {
-            root.querySelector('#retryGoogle').addEventListener('click', () => {
-              closeModal();
-              openGoogleSignIn();
-            });
-            root.querySelector('[data-modal-close]').addEventListener('click', closeModal);
-          }
-        });
-      }
+      modal({
+        title: 'Demo sign-in unavailable',
+        size: '480px',
+        body: `<p>${escapeHtml(err.message)}</p>`,
+        footer: '<button class="btn btn-secondary" data-modal-close="1">Close</button>',
+        onMount(root) {
+          root.querySelector('[data-modal-close]').addEventListener('click', closeModal);
+        }
+      });
+    }
+  }
+
+  /* ---------------------------------- entry points -------------------------- */
+
+  function openSignIn() {
+    authMode = 'signin';
+    if (location.hash !== '#/welcome') {
+      location.hash = '#/welcome';
+      return;
+    }
+    const viewport = document.getElementById('mainViewport');
+    if (viewport && document.getElementById('authCard')) {
+      paintAuthTabs(viewport);
+      mountAuthForm(viewport);
+    } else if (viewport) {
+      renderWelcome(viewport);
+    }
+  }
+
+  function openSignUp() {
+    authMode = 'signup';
+    if (location.hash !== '#/welcome') {
+      location.hash = '#/welcome';
+      return;
+    }
+    const viewport = document.getElementById('mainViewport');
+    if (viewport && document.getElementById('authCard')) {
+      paintAuthTabs(viewport);
+      mountAuthForm(viewport);
+    } else if (viewport) {
+      renderWelcome(viewport);
     }
   }
 
@@ -601,5 +1136,18 @@
       .join('');
   }
 
-  window.RRAuth = { renderWelcome, renderOnboarding, openGoogleSignIn, openLegalDocument, markdownToHtml, computeAge };
+  window.RRAuth = {
+    renderWelcome,
+    renderVerifyGate,
+    renderOnboarding,
+    openSignIn,
+    openSignUp,
+    openForgotPassword,
+    openDemoSignIn,
+    // Backwards-compatible name: admin screens and the header call this to reach sign-in.
+    openGoogleSignIn: openSignIn,
+    openLegalDocument,
+    markdownToHtml,
+    computeAge
+  };
 })();

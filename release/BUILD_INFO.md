@@ -1,18 +1,20 @@
 # RideRise LK — APK build provenance
 
-Rebuilt on **2026-10-25 08:18 UTC** after the setup-hardening pass (Google client id published
-through `/api/config`, push-token bridge, version name read from the package, admin password
-control), so the bundled `assets/webapp/` matches the current source. Originally produced the same day with
-`scripts/build_apk.sh all` (no Android SDK or Gradle; toolchain provisions a Java runtime,
+Rebuilt on **2026-10-25 08:45 UTC** for the Firebase email/password authentication release
+(bundled Firebase SDK, new sign-in/verification/profile screens, WebView assets served from
+the virtual `https://appassets.androidplatform.net` origin so Firebase persistence works
+inside the APK), so the bundled `assets/webapp/` matches the current source. Built with
+`scripts/build_apk.sh all` (no Android SDK or Gradle; the toolchain provisions a Java runtime,
 aapt2, d8, ecj and apksigner). Verified with `apksigner verify` and `aapt2 dump badging /
-permissions`.
+permissions`. **The APK has not been installed or launched** — this environment has no device
+and no emulator.
 
 ## Phase 2 artifacts
 
 | File | Size | SHA-256 |
 |---|---|---|
-| `apk/riderise-lk-phase2-debug.apk` | 2,374,741 B | `e5d4fd13bda3cfeaa07ecf696f87e81fb24119e8e6e58bbd864bcf7184de1dfb` |
-| `apk/riderise-lk-phase2-release.apk` | 2,378,837 B | `a2e80ddf8adcd429016c2625051f271acde08e86c155076cf735a5b84945f86e` |
+| `apk/riderise-lk-phase2-debug.apk` | 2,436,341 B | `c456d1ed68c5c9db6000678f825e2d618f55aac1102992ce1dfe5a6c0de566dc` |
+| `apk/riderise-lk-phase2-release.apk` | 2,444,533 B | `9a81e9ce0125540db5a84b22e42a0ced90b8204e68c9c8a7bca46c8636b028e0` |
 
 Both are listed in `apk/SHA256SUMS.txt`; verify with `cd release/apk && sha256sum -c
 SHA256SUMS.txt`. The `.idsig` files are v4 signature sidecars.

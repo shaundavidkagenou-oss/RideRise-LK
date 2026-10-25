@@ -1,5 +1,10 @@
 # Google Sign-In: sandbox bridge → production Google Identity Services
 
+> **Superseded for rider accounts.** RideRise LK now signs riders up with **Firebase
+> email/password** authentication — see [`FIREBASE_AUTH.md`](FIREBASE_AUTH.md). The Google
+> bridge described below is retained only for legacy clients and older integrations; the
+> sign-in screen no longer offers it. `GOOGLE_CLIENT_ID` may stay unset.
+
 RideRise LK never asks for a Google password. Authentication is delegated to Google and the
 app only ever receives a Google-issued credential, which the **backend** verifies before
 issuing a RideRise LK session token.

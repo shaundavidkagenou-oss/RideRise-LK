@@ -1005,10 +1005,10 @@
           <p class="hint" id="adminLoginError" style="color:var(--danger-red)"></p>
         </section>
         <section class="card">
-          <h3>Sign in with Google</h3>
-          <p class="muted" style="font-size:.84rem">Studio staff whose Google account carries the administrator or moderator role can sign in without a password.</p>
-          <button class="btn btn-google" id="adminGoogle">Continue with Google</button>
-          <p class="hint">The first-run bootstrap credential must be changed immediately after sign-in. Production servers refuse the development default.</p>
+          <h3>Sign in with your studio rider account</h3>
+          <p class="muted" style="font-size:.84rem">A rider account whose database role is <code>admin</code> or <code>moderator</code> reaches this console automatically. Firebase accounts never gain a role from the client — it is read from the database on every request.</p>
+          <button class="btn btn-primary" id="adminGoogle">Go to rider sign-in</button>
+          <p class="hint">Change the bootstrap password immediately after signing in with the studio credential. Production servers refuse the development default.</p>
         </section>
       </div>`;
 
@@ -1041,7 +1041,7 @@
       }
     });
 
-    viewport.querySelector('#adminGoogle').addEventListener('click', () => window.RRAuth.openGoogleSignIn());
+    viewport.querySelector('#adminGoogle').addEventListener('click', () => window.RRAuth.openSignIn());
   }
 
   function changePasswordModal(forced) {

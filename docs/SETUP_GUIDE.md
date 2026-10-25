@@ -10,7 +10,7 @@ If you only read one line: **run step 1, then decide how far down the list you n
 |---|---|---|
 | Try it on this computer | 1 | 5 min |
 | Use it on your phone, same Wi-Fi | 1, 2 (tunnel), 8 | 30 min |
-| A real deployment riders can sign into | 1–4, 6–9 | an afternoon |
+| A real deployment riders can sign into | 1–4 (Firebase auth), 6–9 | an afternoon |
 | Voice + walkie-talkie between phones | + 6 (TURN) | + 20 min |
 | Push notifications on the phone | + 5 + the Gradle build | + 2 h |
 | Google Play listing | + 10 | + 1–2 days of review |
@@ -38,7 +38,9 @@ First start creates `backend/riderise_lk.sqlite`, applies the Phase 1 schema plu
 migration, and seeds demo riders, three guilds, four events, nine catalogue parts, 21 stunt
 modules and five learning pathways.
 
-Open <http://localhost:3000>, press **Sign in with Google** and pick a demo account:
+Open <http://localhost:3000>. Real sign-in is Firebase email/password (step 4) and stays
+disabled — with an explanation — until you configure it. To look around immediately, press
+**Use a demo account** and pick one:
 
 | Account | Use it for |
 |---|---|
@@ -54,7 +56,7 @@ from the brief; it also works from Studio Console → Sign in).
 
 ```bash
 curl -s localhost:3000/api/health | python3 -m json.tool     # "phase": 2
-npm test                                                     # 50 tests, 50 pass
+npm test                                                     # 78 tests, 78 pass
 ```
 
 ---
@@ -162,56 +164,73 @@ npm run probe:admin      # 36 checks; run against a THROWAWAY database, see the 
 
 ---
 
-## 4. Google Sign-In
+## 4. Rider accounts — Firebase email/password
 
-### What the pieces are
+This is the real sign-in system: no homemade passwords, no Google OAuth requirement, no
+passwordless links. The full engineering notes, API contract, error codes and verification
+checklist live in **`docs/FIREBASE_AUTH.md`**; this is the short version.
+
+**What the pieces are**
 
 | Piece | Used by | Needs |
 |---|---|---|
-| **Web** OAuth client ID | the browser/PWA build (`google.accounts.id`) and the server's ID-token verifier | authorized JavaScript origin = your HTTPS domain |
-| **Android** OAuth client | native Google sign-in in a Gradle build | package `lk.shaunstudios.riderise` + release SHA-1 |
+| Firebase project + **Email/Password** provider | browser, installed PWA, APK | an enabled provider (free) |
+| Web app config (`apiKey`, `authDomain`, `appId`…) | the client SDK in every build | public identifiers — not secrets |
+| `FIREBASE_PROJECT_ID` | the server's ID-token verifier | nothing else; Google's public certificates are fetched automatically |
 
-### Steps
+**Steps**
 
-1. <https://console.cloud.google.com/> → create/select a project.
-2. **OAuth consent screen** → External → app name, support email, developer contact.
-   Scopes: `openid`, `email`, `profile`. While the app is in *Testing*, add every Google
-   account that may sign in (up to 100 testers).
-3. **Credentials → Create credentials → OAuth client ID → Web application**
-   - Authorized JavaScript origins: `https://your-domain.example`
-   - Authorized redirect URIs: not needed for the ID-token flow we use.
-4. Put the client id in the server environment:
+1. <https://console.firebase.google.com/> → **Add project** (Analytics optional).
+2. **Project settings → Your apps → Add app → Web** (`</>`). Copy the `firebaseConfig` values.
+3. **Authentication → Get started → Sign-in method → Email/Password → Enable → Save.**
+   Leave “Email link (passwordless)” off.
+4. Add to `.env` (or your platform's environment) and restart:
 
    ```bash
-   GOOGLE_CLIENT_ID=1234567890-abcdefg.apps.googleusercontent.com
+   FIREBASE_PROJECT_ID=riderise-lk
+   FIREBASE_API_KEY=AIzaSy…                       # public web API key
+   FIREBASE_AUTH_DOMAIN=riderise-lk.firebaseapp.com
+   FIREBASE_APP_ID=1:123456789012:web:abcdef0123456789
+   FIREBASE_MESSAGING_SENDER_ID=123456789012
    ```
 
-   Restart. `/api/config` now publishes it to the web client (it is not a secret) and the
-   sign-in screen switches from the demo sheet to the real Google button.
-5. **Credentials → Create credentials → OAuth client ID → Android** (needed only for the
-   Gradle build): package `lk.shaunstudios.riderise`, then this SHA-1:
+   `FIREBASE_PROJECT_ID` is also picked up from `FCM_SERVICE_ACCOUNT_FILE`/`_JSON` if you
+   already set up push, so one project covers both.
+
+5. **Authentication → Settings → Authorized domains**: add your production domain (and any
+   tunnel host you test with). `localhost` is already there.
+6. Serve the site over **HTTPS** (step 2). Firebase refuses insecure origins other than
+   localhost.
+7. Prove it works:
 
    ```bash
-   ~/.cache/riderise-apk-tools/java/bin/keytool -list -v \
-     -keystore android/keystore/riderise-release.keystore -alias riderise
-   # password: grep '^storepass/keypass:' android/keystore/KEYSTORE-CREDENTIALS.txt
-   # SHA1: 98:EC:4C:24:... (printed as 98ec4c24bc0d867984691e7d0e93b7f8b8715fd4)
+   curl -s localhost:3000/api/auth/firebase/config | python3 -m json.tool   # "configured": true
+   npm run check:setup                                                     # sign-in ✔
    ```
 
-   If you later enable Play App Signing, add **Google's** app-signing SHA-1 too
-   (Play Console → Setup → App signing).
+   Then in the browser: create an account, open the verification email, press
+   **I’ve verified my email**, sign out, sign in again — and check that closing the browser and
+   reopening keeps you signed in (“remember me” is the SDK's LOCAL persistence).
 
-**Important limitation, stated plainly:** Google blocks OAuth inside embedded WebViews
-(`disallowed_useragent`), and the shipped APK is a WebView shell loading `file://` assets.
-So:
+**Stated plainly**
 
-- **Browser / installed PWA:** real Google sign-in works once `GOOGLE_CLIENT_ID` is set.
-- **APK built by `npm run apk`:** keep `GOOGLE_CLIENT_ID` unset if you want the demo sign-in
-  sheet, or accept that the sign-in button will report that Google could not be reached.
-- **APK does real Google sign-in only after** you add Credential Manager + the Google ID
-  library in a Gradle build (snippet in `android/firebase/README.md` and the dependency block
-  in `android/firebase/app-build.gradle.additions.kts`). That is the one piece that cannot be
-  produced by the SDK-free pipeline.
+- Until `FIREBASE_PROJECT_ID` + `FIREBASE_API_KEY` are set, the email/password form renders
+  **disabled** and says which variable is missing. Nothing is faked and no account is created.
+- Passwords live only in Firebase. RideRise LK stores no password, hash or salt.
+- The demo-account sheet is only for evaluating the build. It is refused in production unless
+  you set `ALLOW_DEMO_SIGNIN=1`, and it can never grant an administrator role.
+- Existing demo profiles are **never** merged into a Firebase account by matching email. A
+  rider signs in to the old profile and links it from **Settings → Sign-in & security**.
+- The APK uses the same web config. Session persistence inside the WebView is implemented but
+  **not verified on a real device** — see `docs/FIREBASE_AUTH.md` §8.
+
+### 4b. Legacy Google Sign-In (optional, not used by the app anymore)
+
+The Google OAuth bridge is retained for older clients only. Riders now sign up with email and
+password, so you do **not** need a Google OAuth client. If you set `GOOGLE_CLIENT_ID`, the
+server can still verify Google ID tokens for legacy integrations, and Google explicitly blocks
+OAuth inside embedded WebViews (`disallowed_useragent`) — another reason email/password is the
+supported path.
 
 ---
 
@@ -397,10 +416,10 @@ you own the replacement; keep the aspect ratio.
 | Feature | Check | Expected |
 |---|---|---|
 | Health | `curl /api/health` | `phase: 2`, capability flags match reality |
-| Tests | `npm test` | 50 / 50 pass |
+| Tests | `npm test` | 78 / 78 pass |
 | Admin | `npm run probe:admin` (throwaway DB) | 36 checks pass |
 | Setup | `npm run check:setup -- --url …` | 0 blocking |
-| Sign-in | browser at your domain | real Google button when `GOOGLE_CLIENT_ID` is set |
+| Sign-in | browser at your domain | email/password form enabled when the Firebase vars are set; verification gate before the app opens |
 | Map | guild → Live map | "Who can see me" consent screen first; nothing shared before Start |
 | Voice | two phones, same guild | mic indicator, participant list, honest "relay not configured" text when TURN is absent |
 | Push | console → Broadcast | notification arrives only with the Gradle build |
@@ -414,8 +433,8 @@ you own the replacement; keep the aspect ratio.
 |---|---|---|
 | `Refusing to start: JWT_SECRET is required in production` | `NODE_ENV=production` without a secret | `JWT_SECRET=$(openssl rand -hex 32)`, restart |
 | APK: "Connection failed" to an `http://` URL | cleartext blocked by design | use HTTPS (step 2) |
-| Sign-in sheet always shows demo accounts | `GOOGLE_CLIENT_ID` unset | step 4; or keep demo mode deliberately |
-| Google button says services could not be reached | WebView origin is `file://` | use the browser build, or the Gradle + Credential Manager build |
+| Sign-in form disabled with “not configured on this server” | `FIREBASE_PROJECT_ID` / `FIREBASE_API_KEY` unset | step 4 (5 minutes in the Firebase console) |
+| `auth/unauthorized-domain` after sign-in attempt | origin not listed in Firebase | Authentication → Settings → Authorized domains (step 4.5) |
 | Voice connects then goes silent | TURN relay UDP range blocked | open 49152–65535/UDP (step 6) |
 | `voice/ice` says relay configured but `turn_available:false` | stale server process | restart after changing env |
 | Map is blank | provider key missing / offline | `/api/map/config` → `configured` |
@@ -423,6 +442,8 @@ you own the replacement; keep the aspect ratio.
 | Admin console write blocked with `PASSWORD_CHANGE_REQUIRED` | `must_change_password` is set | Studio Console → 🔑 Password |
 | `npm test` killed / OOM | suites run serially for this reason | don't parallelise; 2 GB RAM is enough as configured |
 | Push log shows `HTTP 403` | FCM API not enabled | enable it in Google Cloud (step 5a.4) |
+| `403 DEMO_SIGNIN_DISABLED` on a demo account | production without `ALLOW_DEMO_SIGNIN=1` | expected — sign in with a real email/password account |
+| Verification email never arrives | wrong address, or spam | press **Resend verification email** on the gate; check Authentication → Templates |
 
 ---
 
@@ -445,6 +466,9 @@ Full detail, including links to each provider's live pricing: `docs/EXTERNAL_CON
 
 No Android device, no emulator, no Firebase project, no TURN account, no outbound access to
 tile or Google endpoints. So: no APK was ever installed or launched, no push was delivered,
-no call was carried between two phones, and no Google ID token was verified against Google's
-live keys. Every step above ends with a verification you can run in your own environment —
-use them, and treat anything unverified as unverified.
+no call was carried between two phones, and no real Firebase account, verification email or
+password reset has been exercised against Google. The Firebase ID-token verifier *is* tested —
+with locally-signed tokens that follow Google's claim contract (`tests/auth.firebase.test.js`,
+21 tests; 6 more UI flows in `tests/ui.auth.test.js`) — but live x509 fetching and Google's
+mail delivery require your project. Every step above ends with a verification you can run in
+your own environment — use them, and treat anything unverified as unverified.

@@ -22,9 +22,9 @@
           icon: '🛠️',
           title: 'Administrator sign-in required',
           body: 'Moderation, rank configuration, catalog verification and official event publishing require an administrator or moderator role. Sign in with the studio admin account to review this console.',
-          actionHtml: '<button class="btn btn-primary" id="adminSignIn">Sign in with Google</button>'
+          actionHtml: '<button class="btn btn-primary" id="adminSignIn">Sign in</button>'
         })}</div>`;
-      viewport.querySelector('#adminSignIn').addEventListener('click', () => window.RRAuth.openGoogleSignIn());
+      viewport.querySelector('#adminSignIn').addEventListener('click', () => window.RRAuth.openSignIn());
       return;
     }
     viewport.innerHTML = `<div class="skeleton" style="height:140px"></div><div class="skeleton"></div>`;

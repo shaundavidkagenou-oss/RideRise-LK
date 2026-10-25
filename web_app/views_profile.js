@@ -923,6 +923,12 @@
     try {
       const [friends, configData] = await Promise.all([api('/api/friends'), api('/api/config')]);
       state.config = configData;
+      let signIn = { linked: false, provider: 'legacy', firebase_available: false, email: null };
+      try {
+        signIn = await api('/api/auth/firebase/status');
+      } catch (err) {
+        /* the card below explains the unavailable state */
+      }
       const acc = state.account || {};
       const profile = state.profile || {};
       const districts = configData.brand.sriLankaDistricts;
@@ -954,6 +960,29 @@
             </select>
             <div class="hint">Non-friends can never send unsolicited messages, links or attachments.</div></div>
           <button class="btn btn-primary btn-sm" id="savePrivacy">Save privacy settings</button>
+        </section>
+
+        <section class="card" id="signInCard">
+          <h3>Sign-in &amp; security</h3>
+          ${
+            signIn.linked
+              ? `<p class="muted" style="font-size:.86rem">Signed in with <strong>Firebase email &amp; password</strong>${
+                  signIn.email ? ` as ${escapeHtml(signIn.email)}` : ''
+                }. Your password is held by Firebase — RideRise LK never stores or logs it.</p>
+                 <p class="hint">Email verified: ${signIn.email_verified ? 'yes' : 'no — check your inbox'}.</p>
+                 <div class="bike-actions">
+                   <button class="btn btn-secondary btn-sm" id="sendResetBtn">Send password reset email</button>
+                   <button class="btn btn-secondary btn-sm" id="changePasswordBtn">Change password</button>
+                 </div>`
+              : `<p class="muted" style="font-size:.86rem">This profile still uses a legacy demo session. Link a Firebase email/password account so your XP, friendships, guilds and messages follow you when you sign in from another device.</p>
+                 <p class="hint">${
+                   signIn.firebase_available
+                     ? 'Linking never creates a second account and never merges profiles automatically.'
+                     : 'Firebase Authentication is not configured on this server yet, so linking is unavailable. See docs/FIREBASE_AUTH.md.'
+                 }</p>
+                 <button class="btn btn-primary btn-sm" id="linkFirebaseBtn" ${signIn.firebase_available ? '' : 'disabled'}>Link a Firebase account</button>`
+          }
+          <p class="hint" style="margin-top:10px">Sessions expire after 7 days of inactivity; the Firebase SDK keeps you signed in across restarts when you tick “remember me” on the sign-in screen.</p>
         </section>
 
         <section class="card">
@@ -1026,7 +1055,7 @@
         <section class="card card-danger">
           <h3>Account deletion</h3>
           <p class="muted" style="font-size:.86rem">Deleting your account permanently removes your profile, bicycles, posts, comments, friendships, guild memberships and private messages. Resolved safety-report audit records are retained for up to 90 days for abuse prevention. This cannot be undone.</p>
-          <p class="hint">Account recovery: RideRise LK cannot restore a deleted account. If you can no longer access your Google account, sign-in recovery is handled by Google at <code>accounts.google.com</code>.</p>
+          <p class="hint">Account recovery: RideRise LK cannot restore a deleted account. If you can no longer sign in, use “Forgot your password?” on the sign-in screen to have Firebase email you a reset link.</p>
           <button class="btn btn-danger" id="deleteAccountBtn">Delete my account permanently</button>
         </section>
 
@@ -1154,6 +1183,13 @@
               }
               try {
                 const res = await api('/api/account', { method: 'DELETE' });
+                // Best effort: also remove the Firebase login. Firebase may require a recent
+                // sign-in; if so the account row is already deleted server-side and the
+                // orphaned Firebase user has no RideRise data attached.
+                if (window.RRFirebase && window.RRFirebase.isConfigured && window.RRFirebase.isConfigured()) {
+                  await window.RRFirebase.deleteAccount().catch(() => {});
+                  await window.RRFirebase.signOut().catch(() => {});
+                }
                 window.RR.setToken('');
                 state.account = null;
                 state.profile = null;
@@ -1168,7 +1204,27 @@
         });
       });
 
-      viewport.querySelector('#signOutBtn').addEventListener('click', () => {
+      const linkBtn = viewport.querySelector('#linkFirebaseBtn');
+      if (linkBtn) linkBtn.addEventListener('click', () => openLinkFirebase(viewport, signIn));
+      const resetBtn = viewport.querySelector('#sendResetBtn, #changePasswordBtn');
+      if (resetBtn) {
+        resetBtn.addEventListener('click', async () => {
+          if (!window.RRFirebase || !window.RRFirebase.isConfigured()) {
+            return toast('Firebase Authentication is not configured on this server.', 'error');
+          }
+          try {
+            await window.RRFirebase.sendPasswordReset(signIn.email || (state.account && state.account.email) || '');
+            toast('Password reset email sent. Follow the link in your inbox to choose a new password.', 'success', 6000);
+          } catch (err) {
+            toast(err.message, 'error');
+          }
+        });
+      }
+
+      viewport.querySelector('#signOutBtn').addEventListener('click', async () => {
+        if (window.RRFirebase && window.RRFirebase.isConfigured && window.RRFirebase.isConfigured()) {
+          await window.RRFirebase.signOut();
+        }
         window.RR.setToken('');
         state.account = null;
         state.profile = null;
@@ -1180,6 +1236,86 @@
       const retry = viewport.querySelector('[data-retry]');
       if (retry) retry.addEventListener('click', () => renderSettings(viewport));
     }
+  }
+
+  /* ------------------- link this profile to a Firebase account ------------------- */
+
+  function openLinkFirebase(viewport, signIn) {
+    const fb = window.RRFirebase;
+    if (!fb || !fb.isConfigured()) {
+      return toast('Firebase Authentication is not configured on this server yet.', 'error');
+    }
+    modal({
+      title: 'Link a Firebase account',
+      size: '540px',
+      body: `
+        <p class="muted" style="font-size:.86rem">This keeps your existing profile — XP, rank, friendships, guilds and messages — and attaches a Firebase email/password login to it. Your email address is never used to merge accounts automatically.</p>
+        <div class="form-group"><label class="form-label" for="lfEmail">Email address</label>
+          <input class="form-input" id="lfEmail" type="email" autocomplete="email" value="${escapeHtml(
+            (state.account && state.account.email) || ''
+          )}" /></div>
+        <div class="form-group"><label class="form-label" for="lfPassword">Password</label>
+          <input class="form-input" id="lfPassword" type="password" autocomplete="current-password" /></div>
+        <label class="check-row"><input type="checkbox" id="lfCreate" />
+          <span>I don't have a Firebase account yet — create one with these details</span></label>
+        <p class="auth-status" id="lfStatus" role="status" aria-live="polite"></p>`,
+      footer:
+        '<button class="btn btn-secondary" data-modal-close="1">Cancel</button><button class="btn btn-primary" id="lfGo">Link account</button>',
+      onMount(root) {
+        const status = (message, kind) => {
+          const el = root.querySelector('#lfStatus');
+          el.textContent = message || '';
+          el.className = `auth-status${message ? ' is-visible' : ''}${kind ? ` is-${kind}` : ''}`;
+        };
+        root.querySelector('[data-modal-close]').addEventListener('click', closeModal);
+        root.querySelector('#lfGo').addEventListener('click', async () => {
+          const email = root.querySelector('#lfEmail').value.trim();
+          const password = root.querySelector('#lfPassword').value;
+          const create = root.querySelector('#lfCreate').checked;
+          if (!fb.isEmail(email)) return status('Enter a valid email address.', 'error');
+          if (!password) return status('Enter a password.', 'error');
+          const button = root.querySelector('#lfGo');
+          button.disabled = true;
+          try {
+            status(create ? 'Creating the Firebase account…' : 'Signing in to Firebase…');
+            if (create) {
+              const issue = fb.passwordProblem(password);
+              if (issue) {
+                status(issue, 'error');
+                button.disabled = false;
+                return;
+              }
+              await fb.signUp(email, password);
+              await fb.sendVerificationEmail();
+              status('Account created. Open the verification link we emailed you, then press “Link account” again.', 'ok');
+              button.disabled = false;
+              return;
+            }
+            await fb.signIn(email, password);
+            const user = fb.currentUser();
+            if (user && !user.emailVerified) {
+              await fb.reloadUser();
+            }
+            const fresh = fb.currentUser();
+            if (!fresh || !fresh.emailVerified) {
+              await fb.sendVerificationEmail().catch(() => {});
+              status('Verify your email first. We sent (or resent) the verification link — open it, then press “Link account” again.', 'error');
+              button.disabled = false;
+              return;
+            }
+            status('Linking…');
+            const idToken = await fb.getIdToken(true);
+            await api('/api/auth/firebase/link', { method: 'POST', body: { idToken } });
+            closeModal();
+            toast('This profile is now linked to your Firebase account.', 'success', 6000);
+            renderSettings(viewport);
+          } catch (err) {
+            status(err.message || 'Linking failed.', 'error');
+            button.disabled = false;
+          }
+        });
+      }
+    });
   }
 
   window.RRProfile = { renderProfile, renderSettings, openBikeWizard };

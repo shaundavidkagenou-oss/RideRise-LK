@@ -23,6 +23,7 @@ import android.webkit.JavascriptInterface;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -32,6 +33,10 @@ import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
+
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.InputStream;
 
 /**
  * RideRise LK — Android shell by Shaun David Studios.
@@ -50,7 +55,19 @@ public class MainActivity extends Activity {
     private static final int REQ_NOTIFICATIONS = 1002;
     private static final int REQ_MICROPHONE = 1003;
     private static final int REQ_LOCATION = 1004;
-    private static final String APP_ASSET_URL = "file:///android_asset/webapp/index.html";
+    /**
+     * The bundled UI is served over a virtual HTTPS origin instead of file://.
+     *
+     * Firebase Authentication (and browser storage generally) needs a real, secure origin:
+     * from file:// the WebView reports "Origin: null", localStorage can be evicted between
+     * launches and Firebase's persisted sign-in is unreliable. Serving the same bundled
+     * files from https://appassets.androidplatform.net keeps everything inside the APK while
+     * giving the WebView the same origin semantics as the hosted app.
+     */
+    private static final String ASSET_HOST = "appassets.androidplatform.net";
+    private static final String ASSET_ORIGIN = "https://" + ASSET_HOST;
+    private static final String APP_ASSET_URL = ASSET_ORIGIN + "/index.html";
+    private static final String WEBAPP_ASSET_DIR = "webapp";
 
     private WebView webView;
     private ProgressBar progressBar;
@@ -121,6 +138,15 @@ public class MainActivity extends Activity {
 
     private final class RideRiseWebViewClient extends WebViewClient {
         @Override
+        public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
+            Uri uri = request.getUrl();
+            if (uri != null && "https".equals(uri.getScheme()) && ASSET_HOST.equals(uri.getHost())) {
+                return serveBundledAsset(uri);
+            }
+            return super.shouldInterceptRequest(view, request);
+        }
+
+        @Override
         public void onPageFinished(WebView view, String url) {
             super.onPageFinished(view, url);
             // Fade the native splash out once the bundled app has painted.
@@ -139,7 +165,10 @@ public class MainActivity extends Activity {
             String host = uri.getHost() == null ? "" : uri.getHost();
 
             if ("file".equals(scheme) && host.equals("")) {
-                return false; // bundled application assets
+                return false; // legacy bundled asset URL, kept for older builds
+            }
+            if ("https".equals(scheme) && ASSET_HOST.equals(host)) {
+                return false; // bundled application assets served by shouldInterceptRequest
             }
             if ("https".equals(scheme) || "http".equals(scheme)) {
                 // Never navigate the WebView away from the bundled app: open externally.
@@ -152,6 +181,58 @@ public class MainActivity extends Activity {
             }
             return true; // block javascript:, intent:, content: and unknown schemes
         }
+    }
+
+    private static String assetMimeType(String path) {
+        String lower = path.toLowerCase(java.util.Locale.US);
+        if (lower.endsWith(".html")) return "text/html";
+        if (lower.endsWith(".js")) return "application/javascript";
+        if (lower.endsWith(".css")) return "text/css";
+        if (lower.endsWith(".json")) return "application/json";
+        if (lower.endsWith(".svg")) return "image/svg+xml";
+        if (lower.endsWith(".png")) return "image/png";
+        if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
+        if (lower.endsWith(".webp")) return "image/webp";
+        if (lower.endsWith(".gif")) return "image/gif";
+        if (lower.endsWith(".woff2")) return "font/woff2";
+        if (lower.endsWith(".woff")) return "font/woff";
+        if (lower.endsWith(".ttf")) return "font/ttf";
+        if (lower.endsWith(".mp3")) return "audio/mpeg";
+        if (lower.endsWith(".wav")) return "audio/wav";
+        if (lower.endsWith(".mp4")) return "video/mp4";
+        if (lower.endsWith(".txt") || lower.endsWith(".md")) return "text/plain";
+        return "application/octet-stream";
+    }
+
+    /**
+     * Maps a request on the virtual origin to a file inside assets/webapp.
+     * Returns null when the request is not for the bundled origin (let WebView handle it).
+     */
+    private WebResourceResponse serveBundledAsset(Uri uri) {
+        if (uri == null) return null;
+        String path = uri.getPath();
+        if (path == null || path.isEmpty() || "/".equals(path)) {
+            path = "/index.html";
+        }
+        if (path.contains("..")) {
+            return new WebResourceResponse("text/plain", "UTF-8", 403, "Forbidden",
+                    new java.util.HashMap<String, String>(), new ByteArrayInputStream(new byte[0]));
+        }
+        String assetPath = WEBAPP_ASSET_DIR + path;
+        InputStream stream = null;
+        try {
+            stream = getAssets().open(assetPath);
+        } catch (IOException notFound) {
+            return new WebResourceResponse("text/plain", "UTF-8", 404, "Not Found",
+                    new java.util.HashMap<String, String>(),
+                    new ByteArrayInputStream("Not found".getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        }
+        java.util.HashMap<String, String> headers = new java.util.HashMap<String, String>();
+        headers.put("Cache-Control", "no-cache");
+        // Same-origin document loads never need CORS, but the virtual origin is also used by
+        // workers and XHR back into the app shell, so keep it consistent with the API server.
+        headers.put("X-Content-Type-Options", "nosniff");
+        return new WebResourceResponse(assetMimeType(path), "UTF-8", 200, "OK", headers, stream);
     }
 
     private final class RideRiseWebChromeClient extends WebChromeClient {
@@ -337,7 +418,11 @@ public class MainActivity extends Activity {
     private boolean isBundledOrigin(Uri origin) {
         if (origin == null) return false;
         String scheme = origin.getScheme();
-        return "file".equals(scheme) && (origin.getHost() == null || origin.getHost().isEmpty() || "localhost".equals(origin.getHost()));
+        if ("https".equals(scheme)) {
+            return ASSET_HOST.equals(origin.getHost());
+        }
+        return "file".equals(scheme)
+                && (origin.getHost() == null || origin.getHost().isEmpty() || "localhost".equals(origin.getHost()));
     }
 
     /**

@@ -16,13 +16,20 @@ Lankan BMX and freestyle riders, built for **Shaun David Studios**.
 | **Minimum age** | 16 (16–17 gets youth-safety defaults) |
 | **Languages** | English · සිංහල · தமிழ் (localisation architecture in place) |
 | **APKs** | `release/apk/riderise-lk-phase2-debug.apk`, `…-release.apk` (signed) |
-| **Tests** | 51 automated tests + 106 Phase 2 API assertions + 36 admin capability checks — all passing |
+| **Tests** | 78 automated tests (including 27 Firebase-auth tests) + 106 Phase 2 API assertions + 36 admin capability checks — all passing |
 
 ---
 
 ## 1. What Phase 2 adds
 
 Everything from Phase 1 remains, including the existing database and users.
+
+> **Sign-in is now real Firebase Authentication (email + password).** Riders create an account
+> with a username, email and password, confirm the verification email, and only then reach the
+> community features. Sessions survive browser and app restarts; password resets are handled by
+> Firebase. Setup: [`docs/FIREBASE_AUTH.md`](docs/FIREBASE_AUTH.md). Until you connect your own
+> Firebase project the sign-in form is disabled and says so — the demo accounts remain only for
+> evaluating the build.
 
 - **Live guild map** — consent-first, off by default, approximate by default, 1.5 km fixed
   radius for riders aged 16–17, short-lived precise option for adults (60 m, ≤10 min),
@@ -69,7 +76,7 @@ Everything from Phase 1 remains, including the existing database and users.
 
 ```bash
 npm start                                  # http://localhost:3000  (SQLite created, migrated, seeded)
-npm test                                   # 51 automated tests (serial)
+npm test                                   # 78 automated tests (serial)
 npm run apk                                # rebuild signed debug + release APKs (no SDK required)
 
 cp .env.example .env                       # optional integrations (map, TURN, FCM, Google)
@@ -132,7 +139,8 @@ tools — is enforced in the backend.
 
 | Step | Doc |
 |---|---|
-| Google sign-in (`GOOGLE_CLIENT_ID`, Android OAuth client + SHA-1) | [`docs/GOOGLE_SIGNIN.md`](docs/GOOGLE_SIGNIN.md) |
+| **Rider accounts — Firebase email/password** (`FIREBASE_PROJECT_ID`, `FIREBASE_API_KEY`, verification, password reset) | [`docs/FIREBASE_AUTH.md`](docs/FIREBASE_AUTH.md) |
+| Legacy Google sign-in (optional, no longer used by the app) | [`docs/GOOGLE_SIGNIN.md`](docs/GOOGLE_SIGNIN.md) |
 | Map tile provider (`MAP_PROVIDER`, `MAP_API_KEY`, optional proxy) | [`docs/PHASE2_VOICE_AND_MAP.md`](docs/PHASE2_VOICE_AND_MAP.md) |
 | TURN relay for reliable voice (`TURN_URLS`, `TURN_SECRET`) | [`docs/PHASE2_VOICE_AND_MAP.md`](docs/PHASE2_VOICE_AND_MAP.md) |
 | Firebase Cloud Messaging (step by step) | [`docs/PHASE2_FIREBASE_PUSH.md`](docs/PHASE2_FIREBASE_PUSH.md) |
