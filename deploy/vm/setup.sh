@@ -42,7 +42,7 @@ fi
 step "Installing system packages"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
-apt-get install -y -qq curl ca-certificates git gnupg ufw >/dev/null
+apt-get install -y -qq curl ca-certificates git gnupg ufw iptables-persistent >/dev/null
 
 # ----------------------------------------------------------------------- Node.js
 # The backend uses node:sqlite, which is only flag-free from Node 22.13. Node 24 is the target.
@@ -102,8 +102,8 @@ NEW_ENV=0
 if [ ! -f "$APP_DIR/.env" ]; then
   NEW_ENV=1
   cat > "$APP_DIR/.env" <<'ENVEOF'
-# Fill these in, then: sudo systemctl restart riderise
-# JWT_SECRET must be 32+ characters:  openssl rand -hex 32
+# You only need to add the two Firebase values below, then: sudo systemctl restart riderise
+# JWT_SECRET is generated automatically on first install.
 JWT_SECRET=
 # Firebase console -> Project settings -> Your apps -> Web app
 FIREBASE_PROJECT_ID=rideriselk
@@ -117,6 +117,18 @@ ADMIN_USERNAME=studio-admin
 ADMIN_PASSWORD=
 ENVEOF
 fi
+# A random 64-character session secret, generated once on first install. Nobody should have to
+# invent this, and a weak one means forgeable sessions. An existing value is never touched.
+if [ -z "$(sed -n 's/^JWT_SECRET=//p' "$APP_DIR/.env" | tail -n 1)" ]; then
+  gen_secret="$(openssl rand -hex 32 2>/dev/null || head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+  tmp_env="$(mktemp)"
+  awk -v secret="$gen_secret" '/^JWT_SECRET=/{ print "JWT_SECRET=" secret; next } { print }' \
+    "$APP_DIR/.env" > "$tmp_env"
+  cat "$tmp_env" > "$APP_DIR/.env"          # keep the inode/permissions
+  rm -f "$tmp_env"
+  step "Generated a random JWT_SECRET (64 characters) in $APP_DIR/.env"
+fi
+
 chown "$APP_USER":"$APP_USER" "$APP_DIR/.env"
 chmod 600 "$APP_DIR/.env"
 # The database lives inside the app folder so it survives restarts AND the file is owned by the service user.
@@ -196,9 +208,11 @@ fi
 if command -v iptables >/dev/null 2>&1 && iptables -L INPUT -n 2>/dev/null | grep -q REJECT; then
   iptables -I INPUT 1 -p tcp --dport 80 -j ACCEPT
   iptables -I INPUT 1 -p tcp --dport 443 -j ACCEPT
+  # Persist, or the rules vanish on reboot and HTTPS stops working days later.
   if command -v netfilter-persistent >/dev/null 2>&1; then
     netfilter-persistent save >/dev/null 2>&1 || true
-  elif [ -d /etc/iptables ]; then
+  else
+    mkdir -p /etc/iptables
     iptables-save > /etc/iptables/rules.v4 2>/dev/null || true
   fi
 fi

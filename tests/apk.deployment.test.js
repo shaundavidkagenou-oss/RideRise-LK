@@ -555,8 +555,21 @@ test('APK-15 — the VM setup script is complete, safe to re-run and free of sec
   assert.doesNotMatch(vm, /JWT_SECRET=[A-Za-z0-9]{20,}/);
   assert.doesNotMatch(vm, /FIREBASE_API_KEY=[A-Za-z0-9_-]{20,}/);
   // And the guide that explains when to use it.
+  // A generated session secret, so nobody has to invent one and the service can boot.
+  assert.match(vm, /openssl rand -hex 32/);
+  assert.match(vm, /iptables-persistent|netfilter-persistent/, 'firewall rules must survive a reboot');
+
   const doc = read('docs', 'FREE_HOSTING_OPTIONS.md');
   assert.match(doc, /Oracle Cloud/);
   assert.match(doc, /render/i, 'must name the hosting option that silently loses SQLite data');
   assert.match(doc, /DuckDNS/);
+
+  // The plain-language walkthrough answers the question it exists for, in its second line.
+  const walk = read('docs', 'ORACLE_CLOUD_STEP_BY_STEP.md');
+  assert.match(walk, /does not stay on/i, 'must answer "do I keep my PC on?" up front');
+  assert.match(walk, /VM\.Standard\.E2\.1\.Micro/, 'must pick the shape that actually has free capacity');
+  assert.match(walk, /duckdns\.org/);
+  assert.match(walk, /Security Lists/, 'must send the reader to the VCN ingress rules');
+  assert.match(walk, /deploy\/vm\/setup\.sh rideriselk\.duckdns\.org/);
+  assert.doesNotMatch(walk, /JWT_SECRET=<paste 64 random/, 'the script generates the secret now');
 });
