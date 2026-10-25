@@ -18,7 +18,7 @@ window.RIDERISE_I18N = {
     safetyBannerSub: 'Never perform stunts on busy public roads, in moving traffic, or near pedestrians. Practice only in legal, controlled environments.',
     newPostBtn: '+ Publish Post',
     preRideCheckBtn: '7-Point Pre-Ride Check (+25 XP)',
-    signInGoogle: 'Sign in with email',
+    signInEmail: 'Sign in with email',
     signOut: 'Sign Out'
   },
   si: {
@@ -39,7 +39,7 @@ window.RIDERISE_I18N = {
     safetyBannerSub: 'කාර්යබහුල මහාමාර්ගවල, වාහන තදබදයේ හෝ පදිකයින් අසල ස්ටන්ට් කිරීමෙන් වළකින්න. ආරක්ෂිත පිටියක පමණක් පුහුණු වන්න.',
     newPostBtn: '+ නව සටහනක්',
     preRideCheckBtn: 'පූර්ව ආරක්ෂක පරීක්ෂාව (+25 XP)',
-    signInGoogle: 'Google ගිණුමෙන් පිවිසෙන්න',
+    signInEmail: 'විද්‍යුත් තැපෑලෙන් පිවිසෙන්න',
     signOut: 'ඉවත් වන්න'
   },
   ta: {
@@ -60,7 +60,7 @@ window.RIDERISE_I18N = {
     safetyBannerSub: 'போக்குவரத்து மிகுந்த சாலைகளிலோ பாதசாரிகள் அருகிலோ ஸ்டண்ட் செய்ய வேண்டாம். பாதுகாப்பான இடங்களில் மட்டும் பயிற்சி செய்யவும்.',
     newPostBtn: '+ புதிய பதிவு',
     preRideCheckBtn: '7-அம்ச பாதுகாப்பு சோதனை (+25 XP)',
-    signInGoogle: 'Google மூலம் உள்நுழையவும்',
+    signInEmail: 'மின்னஞ்சல் மூலம் உள்நுழையவும்',
     signOut: 'வெளியேறு'
   }
 };

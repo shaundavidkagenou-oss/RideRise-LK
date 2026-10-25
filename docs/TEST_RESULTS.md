@@ -22,7 +22,7 @@ Two suites, both executing the **real backend**:
 | # | Test | Requirement covered | Result |
 |---|---|---|---|
 | 1 | Health, brand config, seeded content | §1 branding, §5 ranks, §15 legal docs | PASS |
-| 2 | Google auth error states; password rejection | §3 auth errors, no password handling | PASS |
+| 2 | Google sign-in removed; demo bridge rejects passwords and Google tokens | §3 auth errors, no password handling | PASS |
 | 3 | Session requires valid token; tampering rejected | §3 secure session persistence, §18 auth | PASS |
 | 4 | Public profiles never expose email/DOB/OAuth subject | §4, §16 private vs public data | PASS |
 | 5 | Private and friends-only profiles return restricted cards | §4, §16 privacy defaults | PASS |
@@ -49,14 +49,14 @@ Two suites, both executing the **real backend**:
 | 26 | Account deletion cascades and invalidates the session | §3, §15, §16 | PASS |
 | 27 | Ten unauthenticated write endpoints return 401 | §18 authorization on every write | PASS |
 | 28 | XP engine refuses unknown action types and clamps deltas to per-action caps | §5 anti-farming | PASS |
-| 29 | Forged/unverifiable Google ID token can never create a session | §3, §18 | PASS |
+| 29 | Google-shaped tokens can never create a session (410 `GOOGLE_SIGNIN_REMOVED`) | §3, §18 | PASS |
 | 30 | Guild invitations + accept, mutual-friend counts, MP4 clip uploads (8 MB cap), warning, temporary suspension expiry, admin guild member limit | §8, §9, §7, §14 | PASS |
 
 ## UI end-to-end suite (jsdom)
 
 | # | Journey | Result |
 |---|---|---|
-| UI 1 | Animated splash → welcome hero (logo, 16+, safety strip) → Google sheet (no password) | PASS |
+| UI 1 | Animated splash → welcome hero (logo, 16+, safety strip) → email/password form + demo sheet | PASS |
 | UI 2 | Sign in → feed renders seeded posts, safety strip, XP bar, 5-tab bottom nav | PASS |
 | UI 3 | Walk all 12 primary routes + admin console + guild detail + public profile, zero uncaught JS errors | PASS |
 | UI 4 | Onboarding blocks without age confirmation → legal step → profile → privacy → lands on feed; server marks minor | PASS |
@@ -92,11 +92,11 @@ Certificate and file digests: `release/BUILD_INFO.md`, `release/apk/SHA256SUMS.t
 
 ## What was **not** testable in this environment (honest limitations)
 
-1. **Real Google OAuth round-trip.** `accounts.google.com` is unreachable from the sandbox,
-   so GIS is exercised only through the documented sandbox bridge. The production verifier
-   (RS256 signature, issuer, audience, expiry, `email_verified`) is implemented and its
-   rejection paths are tested, but a live Google token exchange must be validated by the
-   studio once Firebase Authentication is configured (`docs/FIREBASE_AUTH.md`).
+1. **Live Firebase sign-up, verification email and password reset.** No Firebase project is
+   configured in the sandbox, so the Google-hosted identity service cannot be reached. The
+   verifier (RS256 signature, issuer, audience, expiry, `sub`, `email_verified`) is implemented
+   and tested with locally-signed tokens, but a live round-trip must be validated by the studio
+   once the project exists (`docs/FIREBASE_AUTH.md` §7). Google OAuth sign-in itself was removed.
 2. **FCM push delivery.** Permission request, in-app notifications and unread counters are
    implemented and tested in-app; actual push delivery needs Firebase credentials
    (see `EXTERNAL_CONFIG.md`).

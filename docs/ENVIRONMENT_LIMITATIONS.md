@@ -18,7 +18,7 @@ this is the honest record of what that environment supports.
 | Android SDK / Gradle / Kotlin toolchain | ❌ | Full Gradle build impossible; replaced by an equivalent SDK-free pipeline |
 | Android emulator or physical device | ❌ | APK verified statically with two independent tools, not installed |
 | Firebase project & credentials | ❌ | Firebase Auth/Firestore/Storage/FCM cannot be provisioned or tested live |
-| Outbound access to `accounts.google.com`, `firebase`, CDNs | ❌ | Real Google OAuth round-trip cannot be executed in-sandbox |
+| Outbound access to `firebase`, Google identity endpoints, CDNs | ❌ | Real Firebase sign-up / verification email cannot be executed in-sandbox |
 | SMS/email delivery | ❌ | Support addresses are configuration, not live mailboxes |
 
 ## 2. Decisions taken because of those limits
@@ -37,9 +37,9 @@ this is the honest record of what that environment supports.
    (`EXTERNAL_CONFIG.md` §4) and the authorization rules that must be preserved are spelled
    out explicitly.
 
-3. **Authentication: Google Identity Services with server-side ID-token verification**,
-   plus a clearly-labelled **sandbox OAuth bridge** so every role and journey is testable
-   without network access to Google. See `GOOGLE_SIGNIN.md`.
+3. **Authentication: Firebase email/password** with server-side ID-token verification, plus a
+   clearly-labelled **local demo bridge** so every role and journey is testable without a
+   Firebase project. Google OAuth was removed. See `FIREBASE_AUTH.md`.
 
 4. **Push notifications: in-app notification centre now, FCM integration points ready.**
    The Android permission request, native bridge and notification API exist; delivery needs

@@ -8,6 +8,9 @@ const { JSDOM, VirtualConsole } = require('jsdom');
 
 process.env.DB_PATH = `/tmp/riderise_ui_test_${Date.now()}.sqlite`;
 process.env.JWT_SECRET = 'ui-test-secret';
+// UI 4 creates a throwaway rider through the dev-only demo bridge, which requires an
+// explicit opt-in now that Google sign-in has been removed.
+process.env.ALLOW_DEMO_SIGNIN = '1';
 
 const { server, db } = require('../backend/server.js');
 
@@ -128,7 +131,7 @@ test('UI 2 — sign in, feed renders with seeded community content', async () =>
 });
 
 test('UI 3 — every primary route renders without runtime errors', async () => {
-  const adminAuth = await fetch(`${baseUrl}/api/auth/google`, {
+  const adminAuth = await fetch(`${baseUrl}/api/auth/demo`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ presetAccount: 'admin' })
@@ -182,7 +185,7 @@ test('UI 3 — every primary route renders without runtime errors', async () => 
 test('UI 4 — onboarding wizard blocks under-16 and unlocks social features', async () => {
   const { window, document, errors, dom } = await bootApp();
   try {
-    const auth = await fetch(`${baseUrl}/api/auth/google`, {
+    const auth = await fetch(`${baseUrl}/api/auth/demo`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email: 'ui.onboarding@example.com' })

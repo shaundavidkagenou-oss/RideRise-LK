@@ -709,8 +709,9 @@
       size: '560px',
       body: `
         <div class="oauth-sheet">
-          <p class="oauth-sub">These seeded accounts exist only for evaluating the build. They use the
-            legacy sandbox bridge, <strong>not</strong> Firebase Authentication, and the server refuses them in production.</p>
+          <p class="oauth-sub">These seeded accounts exist only for evaluating the build. They use a
+            local demo bridge, <strong>not</strong> Firebase Authentication, and the server refuses them in
+            production. Google Sign-In has been removed — real accounts use email and password.</p>
           <div class="oauth-accounts">
             ${DEMO_IDENTITIES.map(
               (id) => `<button type="button" class="oauth-account" data-email="${escapeHtml(id.email)}" data-preset="${id.key}">
@@ -736,7 +737,7 @@
   async function completeDemoSignIn(payload) {
     document.querySelectorAll('#modalRoot button').forEach((b) => (b.disabled = true));
     try {
-      const data = await api('/api/auth/google', { method: 'POST', body: payload });
+      const data = await api('/api/auth/demo', { method: 'POST', body: payload });
       closeModal();
       await finishSession(data);
     } catch (err) {
@@ -938,7 +939,8 @@
             <button type="button" class="btn btn-secondary" id="wizardBack" ${step === 1 ? 'disabled' : ''}>Back</button>
             <button type="button" class="btn btn-primary" id="wizardNext">${step === 4 ? 'Create my rider account' : 'Continue'}</button>
           </div>
-          <p class="hint" style="text-align:center">Signed in with Google. <button class="link-inline" id="onboardingSignOut">Use a different account</button></p>
+          <p class="hint" style="text-align:center">Signed in with email and password.
+            <button class="link-inline" id="onboardingSignOut">Use a different account</button></p>
         </div>`;
 
       // wire step inputs
@@ -1144,8 +1146,6 @@
     openSignUp,
     openForgotPassword,
     openDemoSignIn,
-    // Backwards-compatible name: admin screens and the header call this to reach sign-in.
-    openGoogleSignIn: openSignIn,
     openLegalDocument,
     markdownToHtml,
     computeAge

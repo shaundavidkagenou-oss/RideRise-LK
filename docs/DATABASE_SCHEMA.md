@@ -7,7 +7,7 @@ SQLite (WAL mode, `PRAGMA foreign_keys = ON`). File: `backend/schema.sql`.
 
 | Table | Purpose | Key rules |
 |---|---|---|
-| `users_private` | Google account identity, email, private DOB, minor flag, legal acceptance timestamps, role, account status | Never returned in any public API response. Email/DOB/OAuth subject excluded by `formatPublicProfile()`. |
+| `users_private` | Firebase UID (`firebase_uid`), legacy `google_sub`, auth provider, email, private DOB, minor flag, legal acceptance timestamps, role, account status | Never returned in any public API response. Email/DOB/identity subject excluded by `formatPublicProfile()`. |
 | `profiles` | Public rider profile | `username` UNIQUE; `profile_visibility` public/friends/private; `hide_from_leaderboards`; `allow_friend_requests`; `allow_messages_from` (friends_only/nobody); locale, reduced-motion, notification prefs; `xp`, `rank_id` server-write only |
 | `ranks` | 7 configurable ranks | `min_xp` thresholds; renamed/thresholded via admin API |
 | `achievements`, `user_achievements` | Badge catalogue + awards | Awards are server-side only; unique per user |

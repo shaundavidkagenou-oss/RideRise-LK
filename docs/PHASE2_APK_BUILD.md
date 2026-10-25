@@ -132,7 +132,7 @@ signing keystore.
 
 1. In Google Cloud Console → **APIs & Services → Credentials**, create an **Android** OAuth
    client with package `lk.shaunstudios.riderise` and the release **SHA-1** (`98ec4c24…`).
-2. Create a **Web** OAuth client and put its client id in `GOOGLE_CLIENT_ID` on the server.
+2. Configure Firebase email/password sign-in (`docs/FIREBASE_AUTH.md`) — Google OAuth was removed and no longer applies to the APK.
 3. Confirm the account picker shows the studio project name, not “RideRise LK wants access”.
 
 ## 8. Publishing notes (APK vs AAB)

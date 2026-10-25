@@ -124,7 +124,7 @@ if (isProdEnv && demoAllowed !== '0' && demoAllowed !== '1') {
   warn('Demo sign-in state in production', 'refused unless ALLOW_DEMO_SIGNIN=1, which is the safe default', 'Leave it unset (or 0) so only real email/password accounts can sign in.');
 }
 if (env('GOOGLE_CLIENT_ID')) {
-  info('GOOGLE_CLIENT_ID is set but unused', 'riders sign in with Firebase email/password; the legacy Google bridge is disabled for new accounts', 'Safe to remove once no older client depends on it.');
+  info('GOOGLE_CLIENT_ID is set but ignored', 'Google sign-in was removed; riders sign in with Firebase email/password', 'Delete the variable from .env — it no longer has any effect.');
 }
 
 /* ----------------------------------- map ---------------------------------- */

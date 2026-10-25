@@ -142,7 +142,7 @@ punishment is applied without a staff action.
 3. **Call quality on weak networks** was not verified on real devices.
 4. **IP-based rate limits** are per-process memory; behind multiple instances they must move
    to Redis or a shared store.
-5. **No email verification** for Google accounts beyond Google's own verification.
+5. **Email verification** is enforced by Firebase Authentication and re-checked server-side on every protected request.
 6. **No independent security audit or penetration test.**
 7. **TURN credentials** require correct time synchronisation between app server and coturn.
 8. **No legal review** of the privacy policy, community rules or minor policy; they remain

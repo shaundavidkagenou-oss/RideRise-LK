@@ -30,7 +30,7 @@ in `EXTERNAL_CONFIG.md`; the relational schema maps 1:1.
 |---|---|
 | `index.html` | App shell: animated splash, top strip (language/motion/contrast, APK links), header, `#mainViewport`, 5-tab bottom nav, modal + toast roots |
 | `api.js` | API client (`fetch` + abort timeout), session store, error taxonomy, i18n lookup, toast/modal/empty/error/skeleton primitives, XP progress component, avatar/logo helpers |
-| `views_auth.js` | Welcome hero, Google sign-in (production GIS + sandbox bridge), onboarding wizard, legal document reader |
+| `views_auth.js` | Welcome hero, Firebase email/password sign-up & sign-in, verification gate, onboarding wizard, legal document reader |
 | `views_feed.js` | Feed, composer, post actions, comments, sharing, reporting, 7-point safety inspection |
 | `views_stunts.js` | Learning library, module reader, checklist/quiz enforcement, inline SVG technique diagrams |
 | `views_guilds.js` | Guild discovery, creation, membership, roles, announcements, chat, shared posts |
@@ -70,7 +70,7 @@ Security model summary (full detail in `DATABASE_SCHEMA.md` §5):
 
 | Concern | Control |
 |---|---|
-| Authentication | Google ID token verified server-side (prod) or sandbox bridge (dev); signed session JWT |
+| Authentication | Firebase email/password; ID token verified server-side against Google's secure-token certificates; signed session JWT. Google OAuth was removed. |
 | Authorization | Role read per-request from DB; ownership checks on every mutation; guild role checks; block checks |
 | IDOR | Every object mutation validates `user_id` ownership (tested) |
 | Privilege escalation | `/api/profile` rejects `xp`, `rank_id`, `role`; admin routes require role (tested) |

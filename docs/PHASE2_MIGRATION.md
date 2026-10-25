@@ -60,7 +60,7 @@ The migration itself is idempotent and runs automatically on server start:
 - **`admin_accounts.user_id`** — Phase 2's credential login requires the administrator
   credential to be linked to a real `users_private` row with role `admin` or `moderator`.
   The bootstrapper links the first admin account it finds. If none exists, sign in with
-  Google as the admin, then link manually (see below).
+  the studio email/password account as the admin, then link manually (see below).
 
 ## 3. Running the migration
 
@@ -88,7 +88,7 @@ On first boot with an empty/legacy `admin_accounts` table:
   Set `ADMIN_USERNAME` and `ADMIN_PASSWORD` to control it yourself.
 
 If login answers `ADMIN_ACCOUNT_UNLINKED`, the credential is not attached to an admin user.
-Fix it after signing in with Google as that admin:
+Fix it after signing in as that admin (email/password, then Settings → Sign-in & security):
 
 ```sql
 -- verify

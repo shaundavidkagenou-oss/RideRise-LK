@@ -28,7 +28,7 @@ async function waitFor(predicate, timeout = 12000, label = 'condition') {
 }
 
 async function signIn(preset) {
-  const res = await fetch(`${baseUrl}/api/auth/google`, {
+  const res = await fetch(`${baseUrl}/api/auth/demo`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ presetAccount: preset })

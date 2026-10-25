@@ -3,16 +3,17 @@
 Run date: 2026-10-25 · Node 22.22.3 · SQLite (`node:sqlite`) · jsdom 30 · Linux x86_64
 sandbox, **no physical Android device and no emulator**.
 
-> **Update — Firebase email/password authentication.** 27 new tests were added after this
-> Phase 2 snapshot: `tests/auth.firebase.test.js` (21 server-side tests with locally-signed ID
-> tokens) and `tests/ui.auth.test.js` (6 end-to-end UI flows). The suite is now **78/78**.
+> **Update — Firebase email/password authentication.** 28 new tests were added after this
+> Phase 2 snapshot: `tests/auth.firebase.test.js` (22 server-side tests with locally-signed ID
+> tokens) and `tests/ui.auth.test.js` (6 end-to-end UI flows). Google sign-in was removed. The
+> suite is now **79/79**.
 > Results and the tested-vs-awaiting-configuration split are in
 > [`FIREBASE_AUTH.md`](FIREBASE_AUTH.md) §9.
 
 Reproduce everything:
 
 ```bash
-npm test                       # 78 node:test tests (Phase 1 + Phase 2 UI + Firebase auth), serially
+npm test                       # 79 node:test tests (Phase 1 + Phase 2 UI + Firebase auth), serially
 npm run probe:admin            # 36-check studio-admin capability probe (needs PROBE_BASE)
 ```
 
@@ -120,7 +121,7 @@ Run against a throwaway database so its bans and posts never touch real data.
 | Bluetooth routing | No paired headset | Test with a real headset; check `BLUETOOTH_CONNECT` grant |
 | Push delivery | No Firebase project / no client token | Follow `PHASE2_FIREBASE_PUSH.md`, then send a test push |
 | Map tiles from a commercial provider | No API key supplied | Set `MAP_PROVIDER` + `MAP_API_KEY`; verify attribution and quota |
-| Google OAuth end-to-end with real Google account | `GOOGLE_CLIENT_ID` not supplied | Follow `docs/GOOGLE_SIGNIN.md` |
+| Google OAuth end-to-end | **removed by design** — Google sign-in no longer exists | Use Firebase email/password: `docs/FIREBASE_AUTH.md` |
 | Screen-reader walkthrough with TalkBack | No device | Test with TalkBack; focus order was reviewed in code only |
 | Sinhala/Tamil glyph rendering on device | No device fonts inspected | Test on a Sinhala/Tamil locale device; Noto fonts are expected on Android 8+ |
 | Battery drain during a 60-minute share | No device | Measure with Android Battery Historian; cadence is 45 s |

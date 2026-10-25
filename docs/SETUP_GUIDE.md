@@ -56,7 +56,7 @@ from the brief; it also works from Studio Console → Sign in).
 
 ```bash
 curl -s localhost:3000/api/health | python3 -m json.tool     # "phase": 2
-npm test                                                     # 78 tests, 78 pass
+npm test                                                     # 79 tests, 79 pass
 ```
 
 ---
@@ -224,13 +224,16 @@ checklist live in **`docs/FIREBASE_AUTH.md`**; this is the short version.
 - The APK uses the same web config. Session persistence inside the WebView is implemented but
   **not verified on a real device** — see `docs/FIREBASE_AUTH.md` §8.
 
-### 4b. Legacy Google Sign-In (optional, not used by the app anymore)
+### 4b. Google Sign-In was removed
 
-The Google OAuth bridge is retained for older clients only. Riders now sign up with email and
-password, so you do **not** need a Google OAuth client. If you set `GOOGLE_CLIENT_ID`, the
-server can still verify Google ID tokens for legacy integrations, and Google explicitly blocks
-OAuth inside embedded WebViews (`disallowed_useragent`) — another reason email/password is the
-supported path.
+RideRise LK no longer offers Google sign-in, and the server no longer reads
+`GOOGLE_CLIENT_ID`. There is **no Google OAuth consent screen, no popup, no client ID and no
+redirect URI** to configure. Any older instructions you find about a Google button are
+historical: the only sign-in paths are **Firebase email/password** (above) and the
+clearly-labelled demo accounts used to evaluate the build.
+
+If a `GOOGLE_CLIENT_ID` is still present in your environment it is ignored — delete it when
+convenient.
 
 ---
 
@@ -416,7 +419,7 @@ you own the replacement; keep the aspect ratio.
 | Feature | Check | Expected |
 |---|---|---|
 | Health | `curl /api/health` | `phase: 2`, capability flags match reality |
-| Tests | `npm test` | 78 / 78 pass |
+| Tests | `npm test` | 79 / 79 pass |
 | Admin | `npm run probe:admin` (throwaway DB) | 36 checks pass |
 | Setup | `npm run check:setup -- --url …` | 0 blocking |
 | Sign-in | browser at your domain | email/password form enabled when the Firebase vars are set; verification gate before the app opens |
@@ -452,7 +455,7 @@ you own the replacement; keep the aspect ratio.
 | Service | Free tier | What breaks when you exceed it |
 |---|---|---|
 | OSM tiles | free under usage policy | tile host blocks you — move to a commercial provider |
-| Google Sign-In | free | nothing billable |
+| Firebase Authentication | free (Email/Password provider) | abuse quotas only — verify current limits |
 | FCM | free | rate limits only |
 | TURN | provider trial credit, then per GB | calls fall back to direct/STUN and start failing on mobile data |
 | Hosting | — | pay for the VPS / platform plan |
@@ -464,11 +467,11 @@ Full detail, including links to each provider's live pricing: `docs/EXTERNAL_CON
 
 ## 14. What this workspace could not test
 
-No Android device, no emulator, no Firebase project, no TURN account, no outbound access to
-tile or Google endpoints. So: no APK was ever installed or launched, no push was delivered,
+No Android device, no emulator, no Firebase project, no TURN account, and no outbound access to
+Firebase or tile endpoints. So: no APK was ever installed or launched, no push was delivered,
 no call was carried between two phones, and no real Firebase account, verification email or
-password reset has been exercised against Google. The Firebase ID-token verifier *is* tested —
-with locally-signed tokens that follow Google's claim contract (`tests/auth.firebase.test.js`,
-21 tests; 6 more UI flows in `tests/ui.auth.test.js`) — but live x509 fetching and Google's
-mail delivery require your project. Every step above ends with a verification you can run in
-your own environment — use them, and treat anything unverified as unverified.
+password reset has been exercised against Google's servers. The Firebase ID-token verifier *is*
+tested — with locally-signed tokens that follow Google's claim contract
+(`tests/auth.firebase.test.js`, 22 tests; 6 more UI flows in `tests/ui.auth.test.js`) — but live
+x509 fetching and mail delivery require your project. Every step above ends with a verification
+you can run in your own environment — use them, and treat anything unverified as unverified.

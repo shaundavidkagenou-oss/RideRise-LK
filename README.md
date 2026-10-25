@@ -16,7 +16,7 @@ Lankan BMX and freestyle riders, built for **Shaun David Studios**.
 | **Minimum age** | 16 (16–17 gets youth-safety defaults) |
 | **Languages** | English · සිංහල · தமிழ் (localisation architecture in place) |
 | **APKs** | `release/apk/riderise-lk-phase2-debug.apk`, `…-release.apk` (signed) |
-| **Tests** | 78 automated tests (including 27 Firebase-auth tests) + 106 Phase 2 API assertions + 36 admin capability checks — all passing |
+| **Tests** | 79 automated tests (including 28 Firebase-auth tests) + 106 Phase 2 API assertions + 36 admin capability checks — all passing |
 
 ---
 
@@ -61,7 +61,7 @@ Everything from Phase 1 remains, including the existing database and users.
 - **Moderation & teen safety** — report/block everywhere (including voice), moderation
   queue with escalation notes, suspension/ban/appeal workflows, human review, spam and
   suspicious-link limits, privacy-friendly defaults for 16–17.
-- **Studio console** — credential or Google sign-in, forced password rotation, metrics,
+- **Studio console** — credential sign-in (rider account with an admin/moderator role), forced password rotation, metrics,
   reports, appeals, users, feedback inbox, news, official events, tutorial CMS, catalogue
   verification, broadcast, push diagnostics and an append-only audit log.
 
@@ -70,16 +70,16 @@ Everything from Phase 1 remains, including the existing database and users.
 ## 2. Run it in 60 seconds
 
 > **Setting this up for real use?** Follow **[`docs/SETUP_GUIDE.md`](docs/SETUP_GUIDE.md)** — an
-> ordered walkthrough for hosting, Google sign-in, Firebase push, TURN voice, APK install and
+> ordered walkthrough for hosting, Firebase email/password sign-in, push, TURN voice, APK install and
 > Play publishing, with a verification step after each one.
 > `npm run check:setup` tells you exactly what is still missing.
 
 ```bash
 npm start                                  # http://localhost:3000  (SQLite created, migrated, seeded)
-npm test                                   # 78 automated tests (serial)
+npm test                                   # 79 automated tests (serial)
 npm run apk                                # rebuild signed debug + release APKs (no SDK required)
 
-cp .env.example .env                       # optional integrations (map, TURN, FCM, Google)
+cp .env.example .env                       # optional integrations (Firebase auth, map, TURN, FCM)
 node --env-file=.env backend/server.js     # run with them enabled
 ```
 
@@ -87,7 +87,7 @@ Node.js **22.5+** is required (the backend uses the built-in `node:sqlite` modul
 external database or paid service is needed to run it locally: with no `.env` the app starts
 fully functional and reports `push: false`, `turnRelay: false` honestly in `/api/health`.
 
-### Demo rider accounts (sandbox Google sign-in)
+### Demo rider accounts (local demo bridge — no Google account needed)
 
 | Account | Role | Why it matters |
 |---|---|---|
@@ -140,7 +140,6 @@ tools — is enforced in the backend.
 | Step | Doc |
 |---|---|
 | **Rider accounts — Firebase email/password** (`FIREBASE_PROJECT_ID`, `FIREBASE_API_KEY`, verification, password reset) | [`docs/FIREBASE_AUTH.md`](docs/FIREBASE_AUTH.md) |
-| Legacy Google sign-in (optional, no longer used by the app) | [`docs/GOOGLE_SIGNIN.md`](docs/GOOGLE_SIGNIN.md) |
 | Map tile provider (`MAP_PROVIDER`, `MAP_API_KEY`, optional proxy) | [`docs/PHASE2_VOICE_AND_MAP.md`](docs/PHASE2_VOICE_AND_MAP.md) |
 | TURN relay for reliable voice (`TURN_URLS`, `TURN_SECRET`) | [`docs/PHASE2_VOICE_AND_MAP.md`](docs/PHASE2_VOICE_AND_MAP.md) |
 | Firebase Cloud Messaging (step by step) | [`docs/PHASE2_FIREBASE_PUSH.md`](docs/PHASE2_FIREBASE_PUSH.md) |
@@ -161,7 +160,8 @@ and the automated suites listed in [`docs/PHASE2_TEST_RESULTS.md`](docs/PHASE2_T
 
 **Requires your credentials or hardware:**
 
-1. **Google OAuth** — the real client id and Android client registration.
+1. **Firebase Authentication** — your project id + web API key enable real email/password
+   sign-up, verification emails and password resets (`docs/FIREBASE_AUTH.md`).
 2. **Map tiles** — a provider key for production traffic (OpenStreetMap works without a key
    under its usage policy).
 3. **TURN relay** — needed for calls across strict carrier NAT.

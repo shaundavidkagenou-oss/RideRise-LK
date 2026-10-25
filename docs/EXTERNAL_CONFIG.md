@@ -22,7 +22,6 @@ pieces your current environment already has.
 |---|---|---|---|---|
 | Core app | none | none | Everything local, demo data, all moderation | — |
 | **Firebase email/password auth** | Firebase project + web app config; Email/Password provider enabled | free | Real rider accounts, verification email, password reset, persistent sessions | Sign-in form renders **disabled** with an explanation; only the demo presets work |
-| Legacy Google Sign-In | Google Cloud project, OAuth **Web** client ID | free | Not used by the current sign-in screen | Nothing — riders use email/password |
 | Map tiles | OSM (no key) or MapTiler/Mapbox/Thunderforest key | OSM free under usage policy; commercial hosts have free tiers then paid **verify** | Street basemap under guild live markers | Markers still render on a blank grid; map shows an offline/tile-error state |
 | Voice / walkie-talkie relay | TURN service (Twilio NTS, Metered, Cloudflare) or self-hosted coturn | free tier then per-GB **verify** | Calls between devices on mobile networks/NAT | STUN-only: works on some Wi-Fi pairs, fails on many carrier networks |
 | Push notifications | Firebase project + service-account JSON | FCM is free | Server-side delivery to registered devices | In-app realtime + badges only |
@@ -84,32 +83,14 @@ quotas apply. **verify** current limits on Firebase's pricing page.
 
 ---
 
-## 2. Google Sign-In (legacy — not used by the app)
+## 2. Google Sign-In — removed
 
-**What it unlocks:** real Google accounts. Without it, only the built-in demo presets work,
-and `/api/auth/google` with an `idToken` returns a clear "not configured" error rather than
-inventing a session.
+Google sign-in and Google OAuth were **removed** from RideRise LK. There is nothing to
+configure: no OAuth client, no consent screen, no SHA-1 registration, no redirect URI. The
+server does not read `GOOGLE_CLIENT_ID`, and the client never loads Google's sign-in script.
 
-1. Open <https://console.cloud.google.com/> and create a project (e.g. `riderise-lk`).
-2. **APIs & Services → OAuth consent screen**: choose External, fill app name, support email,
-   developer contact. Add scopes `openid`, `email`, `profile`. While in "Testing", add every
-   Google account that will sign in.
-3. **Credentials → Create credentials → OAuth client ID → Android**:
-   - package name: `lk.shaunstudios.riderise` (must match `config/brand.config.json`)
-   - SHA-1 of the **release** signing certificate (and the debug one while testing)
-4. **Credentials → Create credentials → OAuth client ID → Web application**. Copy the client
-   ID into `GOOGLE_CLIENT_ID`. The server verifies ID tokens with Google's public keys
-   (RS256/JWKS) and checks the audience.
-5. Ship: the Android client ID is compiled into the app by Google Play Services. Our
-   hand-built APK is a WebView shell — it calls the web sign-in route, so the **Web** client
-   ID is the one the server needs. Configure the Android client ID when you move to a
-   Gradle/Firebase build so native Google Sign-In can be added.
-
-Fees: none. Quota: standard Google OAuth limits; no per-user billing.
-
-**Known limitation:** the shipped APK does not bundle Google Play Services, so the in-app
-button uses the demo/preset flow unless you build with Gradle and add the SDK. The server
-side token verification is implemented and unit-tested with a rejected-credential path.
+Riders authenticate with Firebase email/password (§1b). The demo accounts in the setup guide
+exist only to explore a build that has no Firebase project yet.
 
 ---
 

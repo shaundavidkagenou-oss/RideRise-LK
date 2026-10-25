@@ -491,7 +491,7 @@ test('FB 13 — an existing profile is never merged by matching email alone', as
 
 test('FB 14 — an authenticated rider can deliberately link their own profile', async () => {
   // Use the demo admin account: it already has a profile and a RideRise session.
-  const demo = await call('/api/auth/google', { method: 'POST', body: { presetAccount: 'roshan' } });
+  const demo = await call('/api/auth/demo', { method: 'POST', body: { presetAccount: 'roshan' } });
   assert.equal(demo.status, 200);
 
   const id = newIdentity('link');
@@ -699,9 +699,41 @@ test('FB 21 — a spoofed X-Forwarded-For cannot reset the rate limit from the i
   assert.equal(b.status, 200);
 });
 
+test('FB 22 — Google sign-in is fully removed from the app and the server', async () => {
+  const root = path.join(__dirname, '..');
+
+  // Server: no Google token verifier, no public Google client id, no Google capability flag.
+  const serverSource = fs.readFileSync(path.join(root, 'backend', 'server.js'), 'utf8');
+  assert.equal(/verifyGoogleIdToken|fetchGoogleJwks|googleJwksCache/.test(serverSource), false);
+  assert.equal(serverSource.includes("process.env.GOOGLE_CLIENT_ID"), false, 'GOOGLE_CLIENT_ID must not be read');
+
+  const config = await call('/api/config');
+  assert.equal('googleClientId' in config.json, false);
+  assert.equal('googleSignIn' in config.json.capabilities, false);
+
+  // A Google ID token can never become a session, on either endpoint.
+  for (const endpoint of ['/api/auth/demo', '/api/auth/google']) {
+    const res = await call(endpoint, { method: 'POST', body: { idToken: 'eyJhbGciOiJSUzI1NiJ9.e30.sig' } });
+    assert.equal(res.status, 410, `${endpoint} must refuse Google credentials`);
+    assert.equal(res.json.error, 'GOOGLE_SIGNIN_REMOVED');
+    assert.equal(res.json.token, undefined);
+  }
+
+  // Client: nothing loads or calls Google's sign-in SDK.
+  const clientFiles = fs
+    .readdirSync(path.join(root, 'web_app'))
+    .filter((name) => name.endsWith('.js') || name.endsWith('.html'));
+  for (const name of clientFiles) {
+    const source = fs.readFileSync(path.join(root, 'web_app', name), 'utf8');
+    assert.equal(source.includes('accounts.google.com'), false, `${name} must not load Google Identity Services`);
+    assert.equal(source.includes('openGoogleSignIn'), false, `${name} must not expose a Google sign-in entry point`);
+    assert.equal(source.includes('/api/auth/google'), false, `${name} must not call the deprecated Google route`);
+  }
+});
+
 test('FB 19 — demo sign-in cannot mint a Firebase-linked or admin identity', async () => {
   // The legacy demo bridge must never hand out a role from the request body.
-  const spoof = await call('/api/auth/google', {
+  const spoof = await call('/api/auth/demo', {
     method: 'POST',
     body: { presetAccount: 'kasun', role: 'admin', email: 'evil@example.test' }
   });

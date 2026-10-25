@@ -103,9 +103,12 @@ const phase2 = require('./phase2').createRouter({
 });
 
 // ---------------------------------------------------------------------------
-// Google Identity Services ID-token verification (production OAuth path)
-// Configure GOOGLE_CLIENT_ID to enable strict verification. Without it the server
-// falls back to the documented sandbox OAuth bridge used by this Phase 1 sandbox.
+// Sign-in paths
+//
+// Google Sign-In / Google OAuth was REMOVED. Riders authenticate with Firebase
+// email + password only (below). The demo bridge further down exists purely so the
+// bundled demo accounts can be explored without a Firebase project; it is not an
+// identity provider and never talks to Google.
 // ---------------------------------------------------------------------------
 // ---------------------------------------------------------------------------
 // Firebase Authentication (email + password). The verifier proves Firebase ID
@@ -130,55 +133,6 @@ if (firebaseAuth.configured) {
 const ALLOW_DEMO_SIGNIN =
   process.env.ALLOW_DEMO_SIGNIN === '1' ||
   (process.env.NODE_ENV !== 'production' && process.env.ALLOW_DEMO_SIGNIN !== '0');
-
-const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
-const GOOGLE_ISSUERS = ['accounts.google.com', 'https://accounts.google.com'];
-let googleJwksCache = { keys: null, fetchedAt: 0 };
-
-async function fetchGoogleJwks() {
-  const fresh = Date.now() - googleJwksCache.fetchedAt < 60 * 60 * 1000;
-  if (googleJwksCache.keys && fresh) return googleJwksCache.keys;
-  const res = await fetch('https://www.googleapis.com/oauth2/v3/certs');
-  if (!res.ok) throw new Error('GOOGLE_JWKS_UNAVAILABLE');
-  const data = await res.json();
-  googleJwksCache = { keys: data.keys || [], fetchedAt: Date.now() };
-  return googleJwksCache.keys;
-}
-
-function decodeJwtSegment(segment) {
-  return JSON.parse(Buffer.from(segment, 'base64url').toString('utf8'));
-}
-
-/**
- * Verifies a Google ID token signature, issuer, audience, expiry and email_verified claim.
- * Returns { sub, email, name, picture } on success and throws on any failure.
- */
-async function verifyGoogleIdToken(idToken) {
-  const parts = String(idToken || '').split('.');
-  if (parts.length !== 3) throw new Error('MALFORMED_ID_TOKEN');
-  const header = decodeJwtSegment(parts[0]);
-  const payload = decodeJwtSegment(parts[1]);
-
-  if (header.alg !== 'RS256') throw new Error('UNSUPPORTED_ALG');
-  if (!GOOGLE_ISSUERS.includes(payload.iss)) throw new Error('INVALID_ISSUER');
-  if (!GOOGLE_CLIENT_ID || payload.aud !== GOOGLE_CLIENT_ID) throw new Error('INVALID_AUDIENCE');
-  if (!payload.exp || payload.exp * 1000 < Date.now()) throw new Error('TOKEN_EXPIRED');
-  if (payload.email_verified === false) throw new Error('EMAIL_NOT_VERIFIED');
-
-  const keys = await fetchGoogleJwks();
-  const jwk = keys.find((k) => k.kid === header.kid);
-  if (!jwk) throw new Error('UNKNOWN_SIGNING_KEY');
-  const publicKey = crypto.createPublicKey({ key: jwk, format: 'jwk' });
-  const valid = crypto.verify(
-    'RSA-SHA256',
-    Buffer.from(`${parts[0]}.${parts[1]}`),
-    publicKey,
-    Buffer.from(parts[2], 'base64url')
-  );
-  if (!valid) throw new Error('INVALID_SIGNATURE');
-  if (!payload.email) throw new Error('MISSING_EMAIL');
-  return { sub: payload.sub, email: payload.email, name: payload.name, picture: payload.picture };
-}
 
 // In-memory sliding window rate limiter
 const rateBuckets = new Map();
@@ -840,14 +794,11 @@ const server = http.createServer(async (req, res) => {
         ranks,
         legalDocuments: legalDocs,
         draftSafetyNotice: DRAFT_SAFETY_NOTICE_VERBATIM,
-        // Public browser client id only (never a secret). Empty means the sandbox
-        // sign-in bridge is in use instead of Google Identity Services.
-        googleClientId: GOOGLE_CLIENT_ID,
         // Firebase web config (public identifiers) + demo-signin availability. No secrets.
         firebase: firebaseAuth.webConfig(),
         demoSignInEnabled: ALLOW_DEMO_SIGNIN,
         capabilities: {
-          googleSignIn: Boolean(GOOGLE_CLIENT_ID),
+          emailPasswordSignIn: firebaseAuth.configured,
           push: pushSender.status().configured,
           turnRelay: Boolean(process.env.TURN_URLS || process.env.TURN_URL),
           mapProvider: process.env.MAP_PROVIDER || 'openstreetmap'
@@ -856,7 +807,7 @@ const server = http.createServer(async (req, res) => {
     }
 
     // =========================================================================
-    // SECTION 3: GOOGLE AUTHENTICATION, ONBOARDING & ACCOUNT LIFECYCLE
+    // SECTION 3: AUTHENTICATION, ONBOARDING & ACCOUNT LIFECYCLE
     // =========================================================================
     // =========================================================================
     // FIREBASE AUTHENTICATION (email + password)
@@ -1084,10 +1035,18 @@ const server = http.createServer(async (req, res) => {
       });
     }
 
-    if (pathname === '/api/auth/google' && req.method === 'POST') {
-      // Legacy sandbox bridge. Kept so existing demo accounts and older clients keep working,
-      // but it is not real authentication: it is refused in production unless explicitly
-      // enabled, and it can never grant an administrator role.
+    // =========================================================================
+    // DEMO SIGN-IN (evaluation only — NOT an identity provider)
+    //
+    // Google Sign-In was removed. This bridge signs in the four seeded demo riders so the
+    // app can be explored before Firebase is configured. It refuses to run in production
+    // unless an operator sets ALLOW_DEMO_SIGNIN=1, and it can never grant a role that the
+    // database does not already contain.
+    //
+    // `POST /api/auth/google` is kept as a deprecated alias so an already-installed APK
+    // keeps working; it performs no Google request of any kind.
+    // =========================================================================
+    if ((pathname === '/api/auth/demo' || pathname === '/api/auth/google') && req.method === 'POST') {
       if (!ALLOW_DEMO_SIGNIN) {
         return sendJson(res, 403, {
           error: 'DEMO_SIGNIN_DISABLED',
@@ -1097,90 +1056,68 @@ const server = http.createServer(async (req, res) => {
       }
       const body = await readJsonBody(req);
 
-      // Support testing cancelled, failed, or unavailable Google Auth states clearly
-      if (body.simulateError === 'cancelled') {
-        return sendJson(res, 400, {
-          error: 'AUTH_CANCELLED',
-          message: 'Google Sign-In was cancelled before completion. No account changes were made. Tap "Sign in with Google" whenever you are ready.'
-        });
-      }
-      if (body.simulateError === 'network_unavailable') {
-        return sendJson(res, 503, {
-          error: 'AUTH_UNAVAILABLE',
-          message: 'Google Authentication service is temporarily unreachable. Check your internet connection and tap Retry.'
-        });
-      }
-      if (body.simulateError === 'invalid_credential') {
-        return sendJson(res, 401, {
-          error: 'AUTH_FAILED',
-          message: 'Google OAuth token verification failed or expired. Please try signing in again.'
+      // An ID token has no meaning here any more: Google sign-in was removed. Reject it
+      // loudly rather than silently ignoring a credential the client thinks it sent.
+      if (body.idToken) {
+        return sendJson(res, 410, {
+          error: 'GOOGLE_SIGNIN_REMOVED',
+          message:
+            'Google Sign-In has been removed from RideRise LK. Create an account with your email address and password, or open the demo accounts from the welcome screen.'
         });
       }
 
-      // Never accept or ask for a raw Google password!
+      // Never accept a password on the demo bridge: real passwords belong to Firebase.
       if (body.password) {
         return sendJson(res, 400, {
           error: 'PASSWORD_NOT_ALLOWED',
-          message: 'Security Policy: RideRise LK never accepts Google passwords directly. Use Google OAuth Sign-In only.'
+          message: 'RideRise LK never accepts passwords outside Firebase Authentication. Sign in with your email and password on the sign-in form.'
         });
       }
 
-      // Production path: verify a real Google Identity Services ID token
-      let verifiedGoogle = null;
-      if (body.idToken) {
-        if (!GOOGLE_CLIENT_ID) {
-          return sendJson(res, 503, {
-            error: 'GOOGLE_CLIENT_ID_NOT_CONFIGURED',
-            message: 'Google ID-token verification is not configured on this server. Set the GOOGLE_CLIENT_ID environment variable (see docs/GOOGLE_SIGNIN.md).'
-          });
-        }
-        try {
-          verifiedGoogle = await verifyGoogleIdToken(body.idToken);
-        } catch (err) {
-          return sendJson(res, 401, {
-            error: 'AUTH_FAILED',
-            message: `Google credential verification failed (${err.message}). Please sign in again.`
-          });
-        }
-      }
+      const presetMap = {
+        kasun: 'usr_kasun',
+        admin: 'usr_admin_nethmi',
+        roshan: 'usr_roshan',
+        dilshan_minor: 'usr_dilshan_minor'
+      };
 
-      const now = new Date().toISOString();
       let userRow = null;
-
-      if (body.presetAccount) {
-        const presetMap = {
-          kasun: 'usr_kasun',
-          admin: 'usr_admin_nethmi',
-          roshan: 'usr_roshan',
-          dilshan_minor: 'usr_dilshan_minor'
-        };
-        if (presetMap[body.presetAccount]) {
-          userRow = db.prepare('SELECT * FROM users_private WHERE id = ?').get(presetMap[body.presetAccount]);
-        }
+      if (body.presetAccount && presetMap[body.presetAccount]) {
+        userRow = db.prepare('SELECT * FROM users_private WHERE id = ?').get(presetMap[body.presetAccount]);
       }
 
-      const emailInput = verifiedGoogle ? verifiedGoogle.email : body.email;
-      if (!userRow && emailInput) {
-        const cleanEmail = String(emailInput).trim().toLowerCase();
+      // Development escape hatch: create a throwaway rider from an email address. Only when
+      // an operator has explicitly enabled demo sign-in, never in production, and always
+      // without a password or a Google identity.
+      if (!userRow && body.email) {
+        if (process.env.NODE_ENV === 'production' || process.env.ALLOW_DEMO_SIGNIN !== '1') {
+          return sendJson(res, 400, {
+            error: 'DEMO_PRESET_REQUIRED',
+            message:
+              'Only the four bundled demo accounts can be used for demo sign-in. Real accounts are created with email and password (Firebase Authentication).'
+          });
+        }
+        const cleanEmail = String(body.email).trim().toLowerCase();
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(cleanEmail)) {
+          return sendJson(res, 400, { error: 'INVALID_EMAIL', message: 'Enter a valid email address.' });
+        }
         userRow = db.prepare('SELECT * FROM users_private WHERE email = ?').get(cleanEmail);
         if (!userRow) {
           const newId = 'usr_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
-          const googleSub = verifiedGoogle && verifiedGoogle.sub
-            ? verifiedGoogle.sub
-            : 'google_oauth_sub_' + crypto.createHash('sha256').update(cleanEmail).digest('hex').slice(0, 16);
+          const demoSub = 'demo_sub_' + crypto.createHash('sha256').update(cleanEmail).digest('hex').slice(0, 16);
           db.prepare(
             `INSERT INTO users_private (
-              id, google_sub, email, is_minor, age_confirmed, onboarding_completed, role, account_status, created_at, updated_at
-            ) VALUES (?, ?, ?, 0, 0, 0, 'rider', 'active', ?, ?)`
-          ).run(newId, googleSub, cleanEmail, now, now);
+              id, google_sub, email, auth_provider, is_minor, age_confirmed, onboarding_completed, role, account_status, created_at, updated_at
+            ) VALUES (?, ?, ?, 'demo', 0, 0, 0, 'rider', 'active', ?, ?)`
+          ).run(newId, demoSub, cleanEmail, new Date().toISOString(), new Date().toISOString());
           userRow = db.prepare('SELECT * FROM users_private WHERE id = ?').get(newId);
         }
       }
 
       if (!userRow) {
         return sendJson(res, 400, {
-          error: 'MISSING_OAUTH_ACCOUNT',
-          message: 'Please select a Google account to continue.'
+          error: 'DEMO_PRESET_REQUIRED',
+          message: 'Choose one of the bundled demo accounts, or sign in with your email address and password.'
         });
       }
 
@@ -1201,13 +1138,24 @@ const server = http.createServer(async (req, res) => {
       const token = signToken({ userId: userRow.id, role: userRow.role });
       const profile = userRow.onboarding_completed ? formatPublicProfile(userRow.id, userRow.id) : null;
 
+      recordAuthEvent(db, {
+        userId: userRow.id,
+        event: 'demo_signin',
+        outcome: 'success',
+        detail: 'demo bridge',
+        ip: clientIp(req)
+      });
+
       return sendJson(res, 200, {
         token,
+        authProvider: 'demo',
+        deprecated: pathname === '/api/auth/google' ? 'Use /api/auth/demo. Google Sign-In was removed.' : undefined,
         onboardingRequired: !userRow.onboarding_completed,
         account: {
           id: userRow.id,
           email: userRow.email, // Only sent to the authenticated owner's private session
           role: userRow.role,
+          auth_provider: userRow.auth_provider || 'demo',
           is_minor: Boolean(userRow.is_minor),
           age_confirmed: Boolean(userRow.age_confirmed),
           onboarding_completed: Boolean(userRow.onboarding_completed),

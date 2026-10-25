@@ -319,9 +319,6 @@
     // Load public config once (branding, ranks, legal docs, Firebase web config)
     try {
       state.config = await RR.api('/api/config');
-      if (state.config && state.config.googleClientId) {
-        window.RR_GOOGLE_CLIENT_ID = state.config.googleClientId;
-      }
     } catch (e) {
       /* App still works; screens that need config will retry. */
     }

@@ -15,7 +15,7 @@ events, the tutorial CMS, catalogue verification, broadcast and the audit trail.
      credential in the brief works exactly as written. Production (`NODE_ENV=production`)
      refuses this default: set `ADMIN_USERNAME`/`ADMIN_PASSWORD`, or use the random password
      printed once in the server log and change it at first sign-in.
-   - **Google** — sign in with the studio Google account whose `users_private.role` is
+   - **Rider account** — sign in with the studio email/password account whose `users_private.role` is
      `admin` or `moderator`.
 3. **Studio Console → 🔑 Password** before inviting real riders. The demo
    credential is published in the project brief, so anyone who can reach the server knows it.
@@ -183,5 +183,5 @@ once, re-read the privacy page, rotate administrator passwords if staff change.
 - Never ask a rider for their password, OTP or bank details, and never send login links.
 - Do not view private conversations unless a report references them — and record why.
 - Never share screenshots containing rider personal data.
-- Report credential compromise immediately: change the password, revoke Google sessions,
+- Report credential compromise immediately: reset the password (Firebase reset email), sign out everywhere,
   review the audit log.

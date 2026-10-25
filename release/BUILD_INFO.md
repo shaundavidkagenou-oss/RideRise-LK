@@ -1,9 +1,8 @@
 # RideRise LK — APK build provenance
 
-Rebuilt on **2026-10-25 08:45 UTC** for the Firebase email/password authentication release
-(bundled Firebase SDK, new sign-in/verification/profile screens, WebView assets served from
-the virtual `https://appassets.androidplatform.net` origin so Firebase persistence works
-inside the APK), so the bundled `assets/webapp/` matches the current source. Built with
+Rebuilt on **2026-10-25 08:51 UTC** after removing Google Sign-In entirely (client script,
+OAuth verifier, `GOOGLE_CLIENT_ID`, public config fields) and keeping Firebase email/password
+as the only real sign-in path, so the bundled `assets/webapp/` matches the current source. Built with
 `scripts/build_apk.sh all` (no Android SDK or Gradle; the toolchain provisions a Java runtime,
 aapt2, d8, ecj and apksigner). Verified with `apksigner verify` and `aapt2 dump badging /
 permissions`. **The APK has not been installed or launched** — this environment has no device
@@ -13,8 +12,8 @@ and no emulator.
 
 | File | Size | SHA-256 |
 |---|---|---|
-| `apk/riderise-lk-phase2-debug.apk` | 2,436,341 B | `c456d1ed68c5c9db6000678f825e2d618f55aac1102992ce1dfe5a6c0de566dc` |
-| `apk/riderise-lk-phase2-release.apk` | 2,444,533 B | `9a81e9ce0125540db5a84b22e42a0ced90b8204e68c9c8a7bca46c8636b028e0` |
+| `apk/riderise-lk-phase2-debug.apk` | 2,436,348 B | `c409e61badd0a0569105c66a22664a6b115393157db7d0981d381bde7ee4fbf1` |
+| `apk/riderise-lk-phase2-release.apk` | 2,440,444 B | `9546cef2f8c538eaa05fcab6b7ee23094eb835c5ea5f7061c03634935cf73b45` |
 
 Both are listed in `apk/SHA256SUMS.txt`; verify with `cd release/apk && sha256sum -c
 SHA256SUMS.txt`. The `.idsig` files are v4 signature sidecars.

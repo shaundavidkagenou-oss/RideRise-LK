@@ -1,9 +1,10 @@
 # Firebase email/password authentication — implementation & setup
 
 RideRise LK uses **real Firebase Authentication with the Email/Password provider**. There is
-no homemade password system, no Google OAuth requirement, no passwordless links, and no
-client-side-only "login". This document covers what was built, how it works, and the exact
-steps to connect your own Firebase project.
+no homemade password system, **no Google sign-in of any kind** (the Google button, the GIS
+script, the OAuth client and the server-side Google token verifier were all removed), no
+passwordless links, and no client-side-only "login". This document covers what was built, how
+it works, and the exact steps to connect your own Firebase project.
 
 > **State of this repository:** the code is complete and covered by 27 automated tests that
 > use locally-signed Firebase ID tokens. **No Firebase project is connected yet**, so no real
@@ -75,6 +76,8 @@ token; they can be linked from **Settings → Sign-in & security**.
 | `POST /api/auth/firebase/link` | Attach a verified UID to the signed-in profile | 10 / h / user |
 | `GET /api/auth/firebase/status` | Which provider/email this session uses | — |
 | `POST /api/auth/firebase/logout` | Audit the sign-out | — |
+| `POST /api/auth/demo` | Demo presets only (evaluation builds; refuses in production unless `ALLOW_DEMO_SIGNIN=1`) | — |
+| `POST /api/auth/google` | **Deprecated alias** of `/api/auth/demo`; returns `410 GOOGLE_SIGNIN_REMOVED` for any Google ID token | — |
 
 Error codes the UI understands: `AUTH_TOKEN_INVALID`, `AUTH_TOKEN_EXPIRED`,
 `EMAIL_NOT_VERIFIED`, `ACCOUNT_SUSPENDED`, `ACCOUNT_DELETED`, `PROFILE_REQUIRED`,
@@ -221,7 +224,7 @@ Work top to bottom; each line has a pass condition.
 | 9 | **Forgot your password?** → enter the address | Reset email arrives; the new password works, the old one does not |
 | 10 | Directory → `#/admin` as a normal rider | 403 / “Administrator sign-in required”; promotion only via the Studio Console |
 | 11 | `npm run check:setup -- --url https://your-domain` | Email/password sign-in ✔, 0 blocking |
-| 12 | `npm test` | 78 / 78 pass |
+| 12 | `npm test` | 79 / 79 pass |
 | 13 | Build and install the APK (section 8) | Sign-up, verification gate, restart and sign-out behave as in the browser |
 
 ---
@@ -252,9 +255,9 @@ report what you see and it can be adapted.
 
 ## 9. What is tested vs. what waits for your Firebase project
 
-### Tested automatically (`npm test`, 78 tests total)
+### Tested automatically (`npm test`, 79 tests total)
 
-`tests/auth.firebase.test.js` (21 tests, real verifier, locally-signed ID tokens):
+`tests/auth.firebase.test.js` (22 tests, real verifier, locally-signed ID tokens):
 
 - sign-up creates exactly one `users_private` + `profiles` row and a working session token
 - a request body cannot dictate role, email, UID or verification state
@@ -289,7 +292,7 @@ report what you see and it can be adapted.
 - sign-out clears both the RideRise token and the Firebase session
 - Settings → Sign-in & security shows the provider and requests a password reset
 
-Also updated: the smoke/flow suites still pass with the new sign-in screen (78/78).
+Also updated: the smoke/flow suites still pass with the new sign-in screen (79/79).
 
 ### Awaiting your Firebase project (cannot be tested here)
 
@@ -350,6 +353,6 @@ Anything in that table is **unverified until you run section 7**. Do not treat t
 | `web_app/vendor/firebase-compat.min.js` | bundled Firebase SDK (offline, APK-safe) |
 | `scripts/bundler/firebase-entry.js` | esbuild entry used to rebuild that bundle |
 | `android/…/MainActivity.java` | virtual HTTPS origin for bundled assets |
-| `tests/auth.firebase.test.js` | 21 server-side auth tests |
+| `tests/auth.firebase.test.js` | 22 server-side auth tests |
 | `tests/ui.auth.test.js` | 6 UI flows |
 | `tests/fixtures/firebase-test-*.pem` | throwaway keypair for locally-signed test tokens |

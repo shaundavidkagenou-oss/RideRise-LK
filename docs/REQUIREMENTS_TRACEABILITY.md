@@ -8,7 +8,7 @@ Each row states where the requirement is implemented and how it is evidenced.
 | **0** | Identify environment capabilities/limitations before implementation | `docs/ENVIRONMENT_LIMITATIONS.md` | Documented substitutions (Flutter/Firebase unavailable) |
 | **1** | Brand identity, supplied logo used unmodified, premium dark design, loading screen, configurable branding | `assets/brand/riderise_logo.png` (1:1 aspect enforced via `.brand-logo-img`), animated splash, token-based design system, `config/brand.config.json` | UI 1, `web_app/styles.css`, `config/brand.config.json` |
 | **2** | Suitable architecture, real backend, no static mockups, secure server-side privileged ops | Node API + SQLite with 60 endpoints; all writes validated server-side; APK bundles the UI and calls the API | 29 API tests, jsdom flows |
-| **3** | Google sign-in, sign-out, session persistence, account deletion & recovery guidance, clear auth errors, no passwords/keys in client | Google Identity Services integration + server ID-token verification; sandbox bridge labelled; JWT session; settings sign-out; delete-account modal; recovery copy | Tests 2, 3, 26, 29; UI 1; `docs/GOOGLE_SIGNIN.md` |
+| **3** | Email/password sign-up, sign-in, sign-out, session persistence, account deletion & recovery guidance, clear auth errors, no passwords/keys in client | Firebase Authentication (Email/Password) + server-side ID-token verification; labelled demo bridge; JWT session; settings sign-out; delete-account modal; recovery copy | Tests FB 1–22, UI AUTH 1–6; `docs/FIREBASE_AUTH.md` |
 | **3b** | Onboarding wizard, 16+ confirmation, private DOB, honest age statement, minor safeguards | `views_auth.js` 4-step wizard; DOB only in `users_private`; explicit "declaration is not verification" copy; minor defaults | Test 6, UI 4 |
 | **4** | Real profiles, avatar upload/crop/replace/remove, username/display name/bio, district/area, bike details & photos, rank/badges/level/bike rating, achievements/progress/contributions, privacy/blocked/notifications/preferences, edit anytime, unique usernames, validation, size limits, upload progress, default avatars, public vs private separation | `views_profile.js`, `/api/profile`, `/api/upload/media`, avatar crop canvas | Tests 4, 5, 8, 10, 24; FLOW 3 |
 | **5** | 7 ranks, admin-editable ranks/thresholds/new ranks, safe XP activities, no rewards for danger, server-side validation, achievements, progress bar, activity history, leaderboards by district/guild/overall, hide-from-leaderboard | `ranks` table + admin editor; `services.awardValidatedXp` allow-list + clamps; `xp_activity_log`; leaderboards endpoint | Tests 7, 8, 11, 23, 28 |
@@ -32,7 +32,7 @@ Each row states where the requirement is implemented and how it is evidenced.
 
 | Gap | Why | What is needed |
 |---|---|---|
-| Google OAuth live round-trip | No access to `accounts.google.com` from the sandbox | `GOOGLE_CLIENT_ID` + HTTPS host (`GOOGLE_SIGNIN.md`) |
+| Live Firebase sign-up / verification email | No Firebase project in the sandbox | `docs/FIREBASE_AUTH.md` §7 checklist |
 | FCM push delivery | No Firebase project | Firebase credentials (`EXTERNAL_CONFIG.md` §2) |
 | Flutter/Firebase-native build | SDKs unavailable in this environment; equivalent shipped | Studio decision; migration paths documented |
 | Real Sinhala/Tamil translations | Requires native-speaker review; architecture + dictionaries are in place with EN complete, SI/TA covering navigation/banners/CTAs | Translation pass |

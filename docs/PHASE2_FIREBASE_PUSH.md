@@ -27,7 +27,7 @@ Cloud Messaging (FCM) and a client that can obtain an FCM registration token.
 2. Android package name: **`lk.shaunstudios.riderise`** (must match exactly; it is set in
    `config/brand.config.json` and the APK manifest).
 3. App nickname: `RideRise LK`.
-4. Debug signing certificate SHA-1 (needed for Google Sign-In/Firebase auth, not for FCM
+4. Debug signing certificate SHA-1 (not needed for email/password auth or FCM
    itself). Print it with:
 
    ```bash

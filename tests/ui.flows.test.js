@@ -46,7 +46,7 @@ async function bootAs(preset) {
   });
 
   // Authenticate first so the token is present in localStorage before the app boots
-  const auth = await fetch(`${baseUrl}/api/auth/google`, {
+  const auth = await fetch(`${baseUrl}/api/auth/demo`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ presetAccount: preset })
@@ -284,7 +284,7 @@ test('FLOW 8 — guild owner invites a rider and the invitation reaches them', a
     await waitFor(() => /Invitation sent|already/i.test(document.querySelector('.toast')?.textContent || ''), 12000, 'invite toast');
 
     // The invited rider sees the pending invitation in their guild list
-    const invitee = await fetch(`${baseUrl}/api/auth/google`, {
+    const invitee = await fetch(`${baseUrl}/api/auth/demo`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ presetAccount: 'roshan' })

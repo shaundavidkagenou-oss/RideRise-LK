@@ -43,7 +43,8 @@ Environment variables:
 | `HOST` | `0.0.0.0` | Bind address |
 | `DB_PATH` | `backend/riderise_lk.sqlite` | SQLite file location |
 | `JWT_SECRET` | derived dev value | **Set this in production.** Signs session tokens (HMAC-SHA256) |
-| `GOOGLE_CLIENT_ID` | *unset* | Enables real Google Identity Services verification |
+| `FIREBASE_PROJECT_ID` / `FIREBASE_API_KEY` | *unset* | Enables real email/password sign-in (`docs/FIREBASE_AUTH.md`) |
+| `GOOGLE_CLIENT_ID` | *ignored* | Google Sign-In was removed; the variable is no longer read |
 
 Reset the demo data:
 

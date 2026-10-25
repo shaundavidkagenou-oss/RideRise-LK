@@ -4,6 +4,9 @@
 // moderation/RBAC, IDOR protection, rate limiting, uploads and account deletion.
 process.env.DB_PATH = `/tmp/riderise_test_${Date.now()}.sqlite`;
 process.env.JWT_SECRET = 'test-suite-secret-do-not-use-in-production';
+// The demo bridge only creates throwaway riders when an operator opts in explicitly. Several
+// tests below rely on that development-only helper to create fresh accounts.
+process.env.ALLOW_DEMO_SIGNIN = '1';
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -35,7 +38,7 @@ async function call(path, { method = 'GET', token = null, body = null, raw = fal
 }
 
 async function signIn(presetAccount) {
-  const res = await call('/api/auth/google', { method: 'POST', body: { presetAccount } });
+  const res = await call('/api/auth/demo', { method: 'POST', body: { presetAccount } });
   assert.equal(res.status, 200, `sign-in failed for ${presetAccount}`);
   return res.json.token;
 }
@@ -79,24 +82,37 @@ test('1. Health, brand config and seeded content are served', async () => {
   assert.equal(config.json.brand.sriLankaDistricts.length, 25);
 });
 
-test('2. Google auth error states are explicit and never accept passwords', async () => {
-  const cancelled = await call('/api/auth/google', { method: 'POST', body: { simulateError: 'cancelled' } });
-  assert.equal(cancelled.status, 400);
-  assert.equal(cancelled.json.error, 'AUTH_CANCELLED');
+test('2. Google sign-in is gone; the demo bridge never accepts passwords or Google tokens', async () => {
+  // Google Sign-In / OAuth was removed. A Google ID token is refused outright...
+  const googleToken = await call('/api/auth/demo', { method: 'POST', body: { idToken: 'not-a-jwt' } });
+  assert.equal(googleToken.status, 410);
+  assert.equal(googleToken.json.error, 'GOOGLE_SIGNIN_REMOVED');
+  assert.equal(googleToken.json.token, undefined);
 
-  const unavailable = await call('/api/auth/google', { method: 'POST', body: { simulateError: 'network_unavailable' } });
-  assert.equal(unavailable.status, 503);
-  assert.equal(unavailable.json.error, 'AUTH_UNAVAILABLE');
+  // ...and so is the deprecated alias, which performs no Google request of any kind.
+  const alias = await call('/api/auth/google', { method: 'POST', body: { idToken: 'anything' } });
+  assert.equal(alias.status, 410);
+  assert.equal(alias.json.error, 'GOOGLE_SIGNIN_REMOVED');
 
-  const invalid = await call('/api/auth/google', { method: 'POST', body: { simulateError: 'invalid_credential' } });
-  assert.equal(invalid.status, 401);
-
-  const passwordAttempt = await call('/api/auth/google', {
+  // Passwords only ever go to Firebase Authentication.
+  const passwordAttempt = await call('/api/auth/demo', {
     method: 'POST',
     body: { email: 'someone@example.com', password: 'hunter2' }
   });
   assert.equal(passwordAttempt.status, 400);
   assert.equal(passwordAttempt.json.error, 'PASSWORD_NOT_ALLOWED');
+
+  // With ALLOW_DEMO_SIGNIN=1 (set for this suite) the development-only throwaway helper works,
+  // but it can only ever produce a plain rider linked to no Google identity.
+  const throwaway = await call('/api/auth/demo', { method: 'POST', body: { email: 'who.is.this@example.com' } });
+  assert.equal(throwaway.status, 200);
+  assert.equal(throwaway.json.authProvider, 'demo');
+  assert.equal(throwaway.json.account.role, 'rider');
+  const throwawayRow = db.prepare('SELECT google_sub, firebase_uid, auth_provider FROM users_private WHERE id = ?').get(throwaway.json.account.id);
+  assert.match(throwawayRow.google_sub, /^demo_sub_/, 'no Google subject is invented');
+  assert.equal(throwawayRow.firebase_uid, null);
+  const adminAttempt = await call('/api/admin/overview', { token: throwaway.json.token });
+  assert.equal(adminAttempt.status, 403);
 });
 
 test('3. Session requires a valid token and rejects tampering', async () => {
@@ -136,7 +152,7 @@ test('5. Private and friends-only profiles return restricted cards', async () =>
 });
 
 test('6. Onboarding enforces age, legal acceptance and unique usernames', async () => {
-  const fresh = await call('/api/auth/google', { method: 'POST', body: { email: 'new.rider@example.com' } });
+  const fresh = await call('/api/auth/demo', { method: 'POST', body: { email: 'new.rider@example.com' } });
   assert.equal(fresh.status, 200);
   assert.equal(fresh.json.onboardingRequired, true);
   const freshToken = fresh.json.token;
@@ -897,7 +913,7 @@ test('24. Uploads validate media type and size limits', async () => {
 });
 
 test('25. Posting is rate limited to 10 per minute per account', async () => {
-  const fresh = await call('/api/auth/google', { method: 'POST', body: { email: 'ratelimit.rider@example.com' } });
+  const fresh = await call('/api/auth/demo', { method: 'POST', body: { email: 'ratelimit.rider@example.com' } });
   const token = fresh.json.token;
   await call('/api/auth/onboarding', {
     method: 'POST',
@@ -928,7 +944,7 @@ test('25. Posting is rate limited to 10 per minute per account', async () => {
 });
 
 test('26. Account deletion removes profile, posts and access', async () => {
-  const fresh = await call('/api/auth/google', { method: 'POST', body: { email: 'delete.me@example.com' } });
+  const fresh = await call('/api/auth/demo', { method: 'POST', body: { email: 'delete.me@example.com' } });
   const token = fresh.json.token;
   const onboard = await call('/api/auth/onboarding', {
     method: 'POST',
@@ -1013,20 +1029,24 @@ test('28. Server-side XP engine rejects unknown or unsafe action types', () => {
   assert.equal(after, before + 25);
 });
 
-test('29. Google ID-token path rejects unverifiable credentials when configured', async () => {
-  // The sandbox server runs without GOOGLE_CLIENT_ID, so a real id-token request must be refused
-  // rather than silently trusted. This protects against replaying an unverified JWT.
-  const res = await call('/api/auth/google', {
+test('29. Removed Google credentials can never be replayed into a session', async () => {
+  // A Google-shaped JWT (valid or malformed) is not an accepted credential any more.
+  const res = await call('/api/auth/demo', {
     method: 'POST',
     body: { idToken: 'eyJhbGciOiJSUzI1NiIsImtpZCI6ImZha2UifQ.eyJpc3MiOiJhY2NvdW50cy5nb29nbGUuY29tIn0.c2ln' }
   });
-  assert.equal(res.status, 503);
-  assert.equal(res.json.error, 'GOOGLE_CLIENT_ID_NOT_CONFIGURED');
+  assert.equal(res.status, 410);
+  assert.equal(res.json.error, 'GOOGLE_SIGNIN_REMOVED');
+  assert.equal(res.json.token, undefined);
 
-  // Malformed tokens are always rejected at the API surface, never mapped to a user.
-  const malformed = await call('/api/auth/google', { method: 'POST', body: { idToken: 'not-a-jwt' } });
-  assert.ok([401, 503].includes(malformed.status));
+  const malformed = await call('/api/auth/demo', { method: 'POST', body: { idToken: 'not-a-jwt' } });
+  assert.equal(malformed.status, 410);
   assert.equal(malformed.json.token, undefined);
+
+  // The only sign-in paths left are Firebase email/password and the local demo bridge.
+  const config = await call('/api/config');
+  assert.equal(config.json.firebase.emailVerificationRequired, true);
+  assert.equal(config.json.capabilities.emailPasswordSignIn, config.json.firebase.configured);
 });
 
 test('30. Guild invitations, mutual friends, video uploads and suspension lifecycle', async () => {
@@ -1090,7 +1110,7 @@ test('30. Guild invitations, mutual friends, video uploads and suspension lifecy
   assert.equal(oversizedClip.status, 413);
 
   // --- Warning + temporary suspension lifecycle -----------------------------------
-  const warnTarget = await call('/api/auth/google', { method: 'POST', body: { email: 'warn.target@example.com' } });
+  const warnTarget = await call('/api/auth/demo', { method: 'POST', body: { email: 'warn.target@example.com' } });
   const warnToken = warnTarget.json.token;
   const onboard = await call('/api/auth/onboarding', {
     method: 'POST',
@@ -1139,13 +1159,13 @@ test('30. Guild invitations, mutual friends, video uploads and suspension lifecy
   });
   assert.equal(suspend.status, 200);
 
-  const suspendedLogin = await call('/api/auth/google', { method: 'POST', body: { email: 'warn.target@example.com' } });
+  const suspendedLogin = await call('/api/auth/demo', { method: 'POST', body: { email: 'warn.target@example.com' } });
   assert.equal(suspendedLogin.status, 403);
   assert.match(suspendedLogin.json.message, /suspended/i);
 
   // Expire the suspension and confirm automatic reinstatement
   db.prepare('UPDATE users_private SET suspension_until = ? WHERE id = ?').run(new Date(Date.now() - 60000).toISOString(), targetId);
-  const reopened = await call('/api/auth/google', { method: 'POST', body: { email: 'warn.target@example.com' } });
+  const reopened = await call('/api/auth/demo', { method: 'POST', body: { email: 'warn.target@example.com' } });
   assert.equal(reopened.status, 200);
   assert.equal(reopened.json.account.email, 'warn.target@example.com');
 
@@ -1162,7 +1182,7 @@ test('30. Guild invitations, mutual friends, video uploads and suspension lifecy
 });
 
 test('31. Voice ICE config never claims a relay that is not configured', async () => {
-  const k = await call('/api/auth/google', { method: 'POST', body: { presetAccount: 'kasun' } });
+  const k = await call('/api/auth/demo', { method: 'POST', body: { presetAccount: 'kasun' } });
   assert.equal(k.status, 200);
   const ice = await call('/api/voice/ice', { token: k.json.token });
   assert.equal(ice.status, 200);
@@ -1178,9 +1198,10 @@ test('31. Voice ICE config never claims a relay that is not configured', async (
 test('32. Public config advertises integrations without leaking secrets', async () => {
   const res = await call('/api/config');
   assert.equal(res.status, 200);
-  assert.equal(typeof res.json.googleClientId, 'string', 'clients need to know whether Google sign-in is on');
-  assert.equal(res.json.googleClientId, '', 'no Google client id is configured in the test environment');
-  assert.equal(res.json.capabilities.googleSignIn, false);
+  assert.equal('googleClientId' in res.json, false, 'Google sign-in was removed — no client id is published');
+  assert.equal('googleSignIn' in res.json.capabilities, false);
+  assert.equal(typeof res.json.capabilities.emailPasswordSignIn, 'boolean');
+  assert.equal(res.json.capabilities.emailPasswordSignIn, res.json.firebase.configured);
   assert.equal(typeof res.json.capabilities.push, 'boolean');
   assert.equal(typeof res.json.capabilities.turnRelay, 'boolean');
   const raw = JSON.stringify(res.json);
