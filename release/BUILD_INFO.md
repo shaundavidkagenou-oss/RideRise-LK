@@ -1,25 +1,40 @@
 # RideRise LK — APK build provenance
 
-Rebuilt on **2026-10-25 09:56 UTC** after removing the demo phase: the demo sign-in bridge and
-its UI are gone, sign-in is Firebase email/password only, and the bundled `assets/webapp/` was
-refreshed from the current source so the shell and the web build match. (The Android push
-build — Gradle project, native token bridge, notification service, channel and deep-link
-routing — landed in the previous rebuild and is unchanged.) Built with
-`scripts/build_apk.sh all` (no Android SDK or Gradle; the toolchain provisions a Java runtime,
-aapt2, d8, ecj and apksigner). Verified with `apksigner verify` and `aapt2 dump badging /
-permissions`. **The APK has not been installed or launched** — this environment has no device
-and no emulator.
+Rebuilt on **2026-10-25 12:58 UTC** as the **zero-setup build**: the live server address
+`https://riseriselk.alwaysdata.net` is compiled into the app as the Android string resource
+`default_api_base`, so a fresh install goes straight to the welcome/sign-in screen instead of
+asking a rider for a server URL.
 
-> This SDK-free APK still contains **no Play Services and no Firebase SDK**, so it cannot
-> receive push. The Firebase build lives in `android/` and must be opened in Android Studio;
-> it has never been compiled by Gradle here. See `android/firebase/README.md`.
+What changed against the previous artifacts:
+
+- `config/deployment.config.json` carries the address; `scripts/inject_api_base.py` wrote it into
+  `resources.arsc` during the build (verified below) and the Gradle pipeline reads the same file.
+- `MainActivity.getApiBase()` returns the saved preference when a rider set one, otherwise the
+  built-in address; `getDefaultApiBase()` / `resetApiBase()` back the "Use the built-in server"
+  button in Settings.
+- `versionName` is **2.1.0**, `versionCode` **3** (was 2.0.0 / 2), so Settings and the installer show
+  which build is on a phone.
+- Launcher icons were generated at the correct densities with Pillow 13 (previous builds copied a
+  full-size source image because Pillow was missing), which is why the files are the same size as
+  before despite the extra resource.
+
+> **New signing key.** The release keystore (`android/keystore/`) is git-ignored and did not exist
+> in this environment, so a fresh key was generated: certificate SHA-256
+> `da197bc60af1d9cc7b5f345cc23541f9995bb5a39a6873d467f629956b1354fe` (previously `9f55e66c…`).
+> An older build therefore cannot be updated in place — uninstall it first. **Back up
+> `android/keystore/` now**: losing it means the next build is again a different app.
+
+Built with `scripts/build_apk.sh all` (no Android SDK or Gradle; the toolchain provisions a Java
+runtime, aapt2, d8, ecj and apksigner). Verified with `apksigner verify` and by reading the built
+APK's resource table. **The APK has not been installed or launched** — this environment has no
+device and no emulator.
 
 ## Phase 2 artifacts
 
 | File | Size | SHA-256 |
 |---|---|---|
-| `apk/riderise-lk-phase2-debug.apk` | 2,440,529 B | `b092b1aa44282f76ff51a3945e8783f7e08f867e8415151fe8f969fad77f1aaa` |
-| `apk/riderise-lk-phase2-release.apk` | 2,444,624 B | `5f7eb7b5a8555a3bdf6466e99ab97339184923e72dbe57c58268d2d759267bb2` |
+| `apk/riderise-lk-phase2-debug.apk` | 2,440,526 B | `c7f623f0bbb449b541ee782588deb23d5c1ca56307fe6e8bbcbd13aa8f45ee4a` |
+| `apk/riderise-lk-phase2-release.apk` | 2,444,624 B | `f26ece09acb3212f16864c905ec4914246fde47a54c95508c555f780d6486c53` |
 
 Both are listed in `apk/SHA256SUMS.txt`; verify with `cd release/apk && sha256sum -c
 SHA256SUMS.txt`. The `.idsig` files are v4 signature sidecars.
@@ -28,6 +43,9 @@ Signature verification actually observed on these files:
 
 ```
 Verified using v1 scheme (JAR signing): false
+Verified using v2 scheme (APK Signature Scheme v2): true
+Verified using v3 scheme (APK Signature Scheme v3): true
+Signer #1 certificate SHA-256 digest: da197bc60af1d9cc7b5f345cc23541f9995bb5a39a6873d467f629956b1354fe
 Verified using v2 scheme (APK Signature Scheme v2): true
 Verified using v3 scheme (APK Signature Scheme v3): true
 Signer #1 certificate DN: CN=RideRise LK, OU=Mobile, O=Shaun David Studios, L=Colombo, ST=Western, C=LK

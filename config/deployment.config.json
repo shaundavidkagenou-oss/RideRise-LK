@@ -1,4 +1,4 @@
 {
   "_comment": "Server address compiled into the Android app. Edit it with:  npm run configure:apk -- --url https://api.example.lk   (then npm run apk). Empty string = the app asks the user for a server on first launch.",
-  "apiBaseUrl": ""
+  "apiBaseUrl": "https://riseriselk.alwaysdata.net"
 }

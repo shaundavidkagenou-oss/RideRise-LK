@@ -110,7 +110,11 @@ The repository already ships a signed APK built from this source:
 | File | Size | Signing |
 |---|---|---|
 | `release/apk/riderise-lk-phase2-release.apk` | 2,444,624 B | release key, v2 + v3 |
-| `release/apk/riderise-lk-phase2-debug.apk` | 2,440,529 B | debug key, debuggable |
+| `release/apk/riderise-lk-phase2-debug.apk` | 2,440,526 B | debug key, debuggable |
+
+**These builds have `https://riseriselk.alwaysdata.net` compiled in.** Installing the release APK
+opens on the welcome/sign-in screen; there is no server URL to type. (The certificate digest is
+`da197bc6…` — see `release/BUILD_INFO.md`; if an older build is installed, uninstall it first.)
 
 ```bash
 cd release/apk && sha256sum -c SHA256SUMS.txt          # verify what you downloaded
@@ -118,7 +122,7 @@ adb install -r riderise-lk-phase2-release.apk
 # or copy the .apk to the phone, tap it, allow "install unknown apps" for the file manager
 ```
 
-`lk.shaunstudios.riderise` · versionName `2.0.0` · minSdk 24 (Android 7.0+) · targetSdk 34.
+`lk.shaunstudios.riderise` · versionName `2.1.0` (versionCode 3) · minSdk 24 (Android 7.0+) · targetSdk 34.
 
 #### Two prerequisites — the app will not sign in without them
 
@@ -143,7 +147,7 @@ Authorized domains → Add domain →** `appassets.androidplatform.net`. This is
 separate from the API URL — without it, sign-in fails with `auth/unauthorized-domain`.
 See [`FIREBASE_AUTH.md`](FIREBASE_AUTH.md) §6b.
 
-#### Compiling the server address into the APK (recommended)
+#### Compiling the server address into the APK (already done for the shipped artifacts)
 
 A build can carry its server address, so a rider never sees a setup screen:
 

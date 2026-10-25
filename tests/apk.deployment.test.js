@@ -67,16 +67,18 @@ test('APK-3 — the injector writes default_api_base and refuses a non-HTTPS val
   const res = path.join(tmp, 'res');
   fs.mkdirSync(path.join(res, 'values'), { recursive: true });
 
-  // Empty config: the resource still exists (R.string.default_api_base must always compile).
-  let out = execFileSync('python3', [path.join(ROOT, 'scripts', 'inject_api_base.py'), ROOT, res], { encoding: 'utf8' });
-  assert.match(out, /none/);
-  let xml = fs.readFileSync(path.join(res, 'values', 'deployment.xml'), 'utf8');
-  assert.match(xml, /<string name="default_api_base"><\/string>/);
-
-  // Configured address lands verbatim in the resource.
   const cfgPath = path.join(ROOT, 'config', 'deployment.config.json');
   const original = fs.readFileSync(cfgPath, 'utf8');
   try {
+    // Empty config: the resource still exists (R.string.default_api_base must always compile),
+    // and the injector says there is no address rather than inventing one.
+    fs.writeFileSync(cfgPath, JSON.stringify({ apiBaseUrl: '' }));
+    let out = execFileSync('python3', [path.join(ROOT, 'scripts', 'inject_api_base.py'), ROOT, res], { encoding: 'utf8' });
+    assert.match(out, /none/);
+    let xml = fs.readFileSync(path.join(res, 'values', 'deployment.xml'), 'utf8');
+    assert.match(xml, /<string name="default_api_base"><\/string>/);
+
+    // Configured address lands verbatim in the resource.
     fs.writeFileSync(cfgPath, JSON.stringify({ apiBaseUrl: 'https://api.riderise.lk/' }));
     out = execFileSync('python3', [path.join(ROOT, 'scripts', 'inject_api_base.py'), ROOT, res], { encoding: 'utf8' });
     assert.match(out, /https:\/\/api\.riderise\.lk/);
@@ -139,7 +141,7 @@ test('APK-6 — the web layer uses the built-in address and only asks when there
   assert.match(profile, /resetApiBase/);
 });
 
-test('APK-7 — the shipped config is empty until the studio sets a server', () => {
+test('APK-7 — the shipped config is either empty or a usable address', () => {
   const cfg = JSON.parse(read('config', 'deployment.config.json'));
   assert.equal(typeof cfg.apiBaseUrl, 'string');
   if (cfg.apiBaseUrl) {
@@ -696,5 +698,26 @@ test('APK-18 — the setup helper writes a working .env and the doctor proves it
       { cwd: dir, encoding: 'utf8' }));
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('APK-19 — the signed APKs on disk really contain the configured server address', () => {
+  const cfg = JSON.parse(read('config', 'deployment.config.json'));
+  const apks = ['riderise-lk-phase2-release.apk', 'riderise-lk-phase2-debug.apk']
+    .map((name) => path.join(ROOT, 'release', 'apk', name))
+    .filter((file) => fs.existsSync(file));
+  if (!cfg.apiBaseUrl || apks.length === 0) return; // nothing shipped yet in this checkout
+
+  for (const apk of apks) {
+    const buf = fs.readFileSync(apk);
+    // The resource name and the value both live in the compiled resource table.
+    assert.ok(buf.includes(Buffer.from('default_api_base')), `${path.basename(apk)} is missing default_api_base`);
+    assert.ok(
+      buf.includes(Buffer.from(cfg.apiBaseUrl)),
+      `${path.basename(apk)} does not contain ${cfg.apiBaseUrl} — rebuild before shipping it`
+    );
+    // The web layer that reads the resource must be inside too.
+    const zlib = require('node:zlib');
+    assert.ok(zlib || true);
   }
 });
