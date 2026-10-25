@@ -15,7 +15,7 @@ Lankan BMX and freestyle riders, built for **Shaun David Studios**.
 | **Version** | 2.0.0 (versionCode 2) |
 | **Minimum age** | 16 (16–17 gets youth-safety defaults) |
 | **Languages** | English · සිංහල · தமிழ் (localisation architecture in place) |
-| **APKs** | `release/apk/riderise-lk-phase2-debug.apk`, `…-release.apk` (signed) |
+| **APKs** | `release/apk/riderise-lk-phase2-debug.apk`, `…-release.apk` (signed) — install steps and the two prerequisites: [`docs/BUILD_INSTRUCTIONS.md`](docs/BUILD_INSTRUCTIONS.md) §3 |
 | **Android Studio project** | `android/` — Gradle 8.9, AGP 8.7.3, Firebase Cloud Messaging (BoM 35.1.0), `google-services.json` git-ignored |
 | **Tests** | 92 automated tests (22 Firebase-auth + 7 Android/FCM wiring + 5 FCM credentials) + 106 Phase 2 API assertions + admin capability checks — all passing |
 

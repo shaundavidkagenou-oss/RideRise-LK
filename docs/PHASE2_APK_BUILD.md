@@ -88,21 +88,27 @@ minSdk 24, targetSdk 34, and the eight permissions listed in `release/BUILD_INFO
    Or copy the APK to the phone and open it (allow “Install unknown apps” for the file
    manager).
 
-4. Configure the API endpoint: the shell reads `RRAndroid.getApiBase()`. If it is empty, the
-   bundled app uses its same-origin relative API. For a WebView build, set it once with:
+4. Point it at your backend on first launch. With no server saved, the app opens **Connect
+   your ride server**: paste the API base URL and press **Save & test connection** (it calls
+   `/api/health`). The value is kept in Android `SharedPreferences`, and **Settings → Server
+   connection** changes it later.
 
-   ```js
-   window.RRAndroid.setApiBase('https://api.riderise.example.com');
+   The URL **must be HTTPS**. `android:usesCleartextTraffic="false"` plus mixed-content
+   blocking from the virtual `https://appassets.androidplatform.net` origin means
+   `http://192.168.x.x:3000` is refused. For a phone test, tunnel the local server:
+
+   ```bash
+   cloudflared tunnel --url http://localhost:3000   # or: ngrok http 3000
    ```
 
-   then reload. (The endpoint must be HTTPS; cleartext traffic is disabled.)
+   and use the printed `https://…` host. For real use, deploy behind HTTPS.
 
 ## 5. On-device checks that matter
 
 | Check | Expected |
 |---|---|
 | Launch | Branded splash, then feed; no white flash |
-| Google sign-in | Real account completes; no password prompt inside the app |
+| Email/password sign-in | Real Firebase account completes; verification email gate appears for a new account |
 | Guild map | Permission prompt appears only after **Start sharing**; approximate circle visible; Stop removes you immediately |
 | 16–17 account | No precise option anywhere; circle is 1.5 km |
 | Voice room | Permission prompt on join; join listen-only works; mic indicator closed until unmute |
@@ -128,12 +134,17 @@ Edit `config/brand.config.json`:
 Play requires a strictly increasing `versionCode`. Rebuild, re-verify and keep the same
 signing keystore.
 
-## 7. Google OAuth with the real package id
+## 7. Firebase project settings for the installed app
 
-1. In Google Cloud Console → **APIs & Services → Credentials**, create an **Android** OAuth
-   client with package `lk.shaunstudios.riderise` and the release **SHA-1** (`98ec4c24…`).
-2. Configure Firebase email/password sign-in (`docs/FIREBASE_AUTH.md`) — Google OAuth was removed and no longer applies to the APK.
-3. Confirm the account picker shows the studio project name, not “RideRise LK wants access”.
+1. **Authentication → Settings → Authorized domains → Add domain →**
+   `appassets.androidplatform.net`. The bundled UI is served from that virtual HTTPS origin,
+   so Firebase treats the APK as a web client at that domain. Skipping this gives
+   `auth/unauthorized-domain` on the first sign-in attempt.
+2. The APK reads its Firebase web config from `/api/config` at runtime, so the same project
+   serves the web build and the app — no rebuild when the config changes.
+3. Google OAuth was removed from the product; no Android OAuth client or SHA-1 registration
+   is needed for sign-in. The release **SHA-1** (`98ec4c24…`) is only relevant if you later add
+   Play App Signing, Android App Links or another Google service.
 
 ## 8. Publishing notes (APK vs AAB)
 
@@ -153,6 +164,9 @@ signing keystore.
 | `exit=126` right after “Generating release signing key” | JDK binaries lost the executable bit after wheel extraction; the script now runs `chmod +x`, or run it manually: `chmod +x ~/.cache/riderise-apk-tools/java/bin/*` |
 | `invalid source release: 17` | ecj version mismatch; keep `-source 1.8 -target 1.8` |
 | App shows a blank screen | Check `adb logcat | grep RideRiseLK`; usually a missing asset or an API base pointing at an unreachable host |
-| Microphone prompt never appears | The WebView only grants capture to `file://` bundled assets; confirm you are not navigating to a remote URL |
+| Microphone prompt never appears | Capture is only granted to the bundled `https://appassets.androidplatform.net` origin; confirm the app is not navigating to a remote page |
+| `INSTALL_FAILED_UPDATE_INCOMPATIBLE` | The installed copy was signed with a different key. `adb uninstall lk.shaunstudios.riderise`, then install |
+| Sign-in: `auth/unauthorized-domain` | Step 7.1 was skipped — add `appassets.androidplatform.net` in Firebase |
+| Setup screen: “Connection failed” | URL is `http://`, the tunnel is closed, or the phone cannot reach the host. Open `<url>/api/health` in the phone browser |
 | Location stays “unavailable” | Device location off, or permission denied; the app shows the exact reason |
 | Voice connects but is silent | No TURN relay on strict carrier NAT; set `TURN_URLS` + `TURN_SECRET` |

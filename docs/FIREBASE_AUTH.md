@@ -207,6 +207,7 @@ Console → **Authentication → Settings → Authorized domains**:
 
 | Domain | When |
 |---|---|
+| `appassets.androidplatform.net` | **the installed APK** — its bundled UI is served from this virtual HTTPS origin. Without it, sign-in inside the app fails with `auth/unauthorized-domain` |
 | `localhost` (already listed) | development on this computer |
 | `<projectId>.firebaseapp.com` (already listed) | default auth domain |
 | your production domain, e.g. `riderise.yourdomain.lk` | every real deployment |

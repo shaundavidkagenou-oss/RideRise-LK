@@ -105,21 +105,81 @@ release/BUILD_INFO.md
 
 ### Install on a device
 
+The repository already ships a signed APK built from this source:
+
+| File | Size | Signing |
+|---|---|---|
+| `release/apk/riderise-lk-phase2-release.apk` | 2,444,624 B | release key, v2 + v3 |
+| `release/apk/riderise-lk-phase2-debug.apk` | 2,440,529 B | debug key, debuggable |
+
 ```bash
-adb install -r release/apk/riderise-lk-phase2-release.apk
-# or copy the APK to the phone, tap it, and allow "install unknown apps" for your file manager
+cd release/apk && sha256sum -c SHA256SUMS.txt          # verify what you downloaded
+adb install -r riderise-lk-phase2-release.apk
+# or copy the .apk to the phone, tap it, allow "install unknown apps" for the file manager
 ```
 
-First launch shows the animated badge splash, then the welcome screen. Because the APK
-bundles the UI, the app opens instantly even without a network. To connect it to your
-backend:
+`lk.shaunstudios.riderise` · versionName `2.0.0` · minSdk 24 (Android 7.0+) · targetSdk 34.
 
-**Settings → Server connection → API base URL →** `https://your-riderise-api.example` →
-**Save & test connection**. The URL is stored in Android `SharedPreferences` and is
-validated over HTTPS (`android:usesCleartextTraffic="false"`).
+#### Two prerequisites — the app will not sign in without them
 
-If no API is configured, the app shows a clear error with the exact next step instead of
-fake data.
+**1. The backend URL must be HTTPS.** The manifest sets
+`android:usesCleartextTraffic="false"`, and the bundled UI runs on the virtual HTTPS origin
+`https://appassets.androidplatform.net`, so a plain-HTTP API call is blocked as mixed content.
+`http://192.168.x.x:3000` therefore cannot work — that is a deliberate security setting, not a bug.
+
+For a quick test on a phone, expose the running server over HTTPS with a tunnel (no account needed):
+
+```bash
+cloudflared tunnel --url http://localhost:3000   # prints https://<random>.trycloudflare.com
+# or: ngrok http 3000
+```
+
+Open `https://<that-host>/api/health` in the phone's browser first — it must return JSON.
+For real use, deploy the backend behind HTTPS (Render/Railway/Fly/VPS + Caddy) and use that
+stable URL; a quick tunnel changes address every restart and stops when your computer sleeps.
+
+**2. Firebase must trust the APK's origin.** Console → **Authentication → Settings →
+Authorized domains → Add domain →** `appassets.androidplatform.net`. This is one-time and
+separate from the API URL — without it, sign-in fails with `auth/unauthorized-domain`.
+See [`FIREBASE_AUTH.md`](FIREBASE_AUTH.md) §6b.
+
+#### First run
+
+1. Splash (bundled badge), then **Connect your ride server**.
+2. Paste the HTTPS API URL → **Save & test connection** → it calls `/api/health` and reports
+   `Connected to RideRise LK · Phase 2 ✓`.
+3. Sign in or create an account with Firebase email + password (same accounts as the web build).
+4. Change the server later in **Settings → Server connection**.
+
+The URL is stored in Android `SharedPreferences` and mirrored into web storage, so it survives
+restarts. With no URL configured the app shows the setup screen and an explicit error rather
+than fake data.
+
+#### If it does not work
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| `INSTALL_FAILED_UPDATE_INCOMPATIBLE` | the installed app was signed with a different key | `adb uninstall lk.shaunstudios.riderise`, then install |
+| “App not installed” / blocked | unknown-source installs disabled | allow installs for the file manager or browser you used |
+| Setup screen: “Connection failed” | URL is `http://`, tunnel is down, or the phone cannot reach the host | use the `https://` URL; test `/api/health` in the phone browser |
+| Blank screen after a successful connect | tunnel closed while the app was open | restart the tunnel, re-save the URL in Settings |
+| Sign-in: `auth/unauthorized-domain` | prerequisite 2 not applied | add `appassets.androidplatform.net` in Firebase |
+| Sign-in: `auth/network-request-failed` | phone offline, or a network blocking `googleapis.com` | retry another network |
+| Sign-in: “server cannot reach Google” banner | the **server** cannot reach `www.googleapis.com` for token verification | allow outbound HTTPS on the server host |
+
+#### Signing identity — read before rebuilding
+
+The APKs above are signed with the release key generated during the project's build
+(cert SHA-256 `9f55e66c0ec49f3ef88a58b4cbb1db5e99925e0d42492aaad5935b0f068bdd09`). That
+keystore lives in `android/keystore/`, which is **git-ignored and never committed**, so it is
+not in a fresh clone. Consequences:
+
+- A rebuild in a fresh clone creates a **new** key, and that APK will not install over one
+  built with the old key (uninstall first).
+- From your first local `npm run apk`, you own the key: copy `android/keystore/` to a password
+  manager and an offline backup. Losing it means you can never update the app under the same
+  identity; leaking it lets someone else publish as the studio.
+- For Play Store distribution use Play App Signing, which makes the upload key replaceable.
 
 ### Upgrading the package identifier
 
