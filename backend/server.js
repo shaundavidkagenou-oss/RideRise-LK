@@ -8,6 +8,21 @@ const crypto = require('node:crypto');
 const zlib = require('node:zlib');
 const { DatabaseSync } = require('node:sqlite');
 
+// A hosting panel runs this file directly (`node backend/server.js`), which bypasses the
+// `--env-file` flag that `npm start` uses. Load a local .env ourselves so both ways work.
+// Variables injected by the panel/container always win: loadEnvFile does not overwrite them.
+// Only when this file is the entry point: the test suite imports the server as a module and
+// must never pick up a developer's real .env (it would change what the tests assert).
+if (require.main === module) {
+  for (const envFile of ['.env', path.join(__dirname, '..', '.env'), path.join(__dirname, '.env')]) {
+    try {
+      process.loadEnvFile(envFile);
+    } catch {
+      // No .env (normal in production where the panel supplies variables) — carry on.
+    }
+  }
+}
+
 const brandConfig = JSON.parse(
   fs.readFileSync(path.join(__dirname, '..', 'config', 'brand.config.json'), 'utf8')
 );
@@ -16,7 +31,10 @@ const { seedDatabase, DRAFT_SAFETY_NOTICE_VERBATIM } = require('./seed');
 const { createFirebaseAuth, FirebaseAuthError } = require('./firebase_auth');
 const { migrateFirebaseAuth, recordAuthEvent } = require('./auth_migrations');
 
-const PORT = Number(process.env.PORT || 3000);
+// Pterodactyl/Wings hands the allocation to the container as SERVER_PORT and expects the
+// process to listen there. Reading it means a panel deployment works with no extra variable;
+// PORT still wins when set explicitly.
+const PORT = Number(process.env.PORT || process.env.SERVER_PORT || 3000);
 const HOST = process.env.HOST || '0.0.0.0';
 const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'riderise_lk.sqlite');
 // Ephemeral or environment-supplied HMAC secret (never hardcoded production secrets in client code)

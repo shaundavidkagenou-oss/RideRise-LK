@@ -83,6 +83,16 @@ there.
    **Settings → Startup** or open a ticket with the host; you must be able to change the start
    command.
 
+   The studio's Enzonic server uses a different egg layout — **Main File** (`backend/server.js`),
+   **User Uploaded Files**, **Git Repository Address** and **Git Branch** instead of a free-form
+   command. For that layout: keep Main File as `backend/server.js`, set **User Uploaded Files →
+   Off** so the panel clones the repository, and put secrets in **+ Add Variable**. Full
+   click-by-click: [`SERVER_SETUP_WALKTHROUGH.md`](SERVER_SETUP_WALKTHROUGH.md).
+
+   Whichever layout you have, the server now reads the panel's `SERVER_PORT` when `PORT` is not
+   set, and loads `.env` itself when the entry file is run directly — so neither a missing `PORT`
+   variable nor a missing `--env-file` flag can leave it listening on the wrong port.
+
 > **Node version matters.** `backend/server.js` uses the built-in `node:sqlite` module, which is
 > only flag-free from **Node 22.13.0** (or 24). On Node 20 the server dies instantly with
 > `ERR_UNKNOWN_BUILTIN_MODULE: No such built-in module: node:sqlite`. If the egg offers a Node
@@ -169,7 +179,9 @@ Notes that save time later:
   while your allocation is a different number).
 - No secrets in the repo: `.env` stays in `/home/container` only (it is git-ignored already).
 - If your panel has a **Variables/Environment** tab instead, you can put the same keys there —
-  `node --env-file-if-exists=.env` simply does nothing when there is no file.
+  the server loads a `.env` only when it finds one, and **panel variables always win** over the
+  file when both exist. Do not define a variable with an empty value: an empty string counts as
+  "set" and suppresses the value from `.env`.
 
 ---
 
@@ -181,9 +193,10 @@ cannot get a certificate for a bare IP.
 
 ### Route A — the panel already gives you a hostname (this is your case)
 
-You have `https://rideriselk.enzonic.dev`. As long as Enzonic routes that subdomain to your
-server's allocated port and terminates TLS (their panel advertises automatic SSL), there is
-nothing to buy and nothing to configure — skip to §6 and use that address.
+You have `https://rideriselk.enzonic.dev`, and the panel allocates **port 25941**
+(`SERVER_PORT`). As long as Enzonic routes that subdomain to that port and terminates TLS (their
+panel advertises automatic SSL), there is nothing to buy and nothing to configure — skip to §6
+and use that address.
 
 Verify it before trusting it: open `https://rideriselk.enzonic.dev/api/health` from the phone's
 **mobile data** once the server is running (§4–§6). JSON back = Route A works. A 502 means the

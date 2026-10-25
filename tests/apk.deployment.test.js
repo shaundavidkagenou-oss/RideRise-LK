@@ -452,3 +452,83 @@ test('APK-12 — the server upload bundle carries the app, never a secret', () =
     fs.rmSync(out, { force: true });
   }
 });
+
+/* --------------------------------------------- panel (Pterodactyl) startup ---- */
+// A game/app panel runs the entry file directly — `node backend/server.js` — instead of
+// `npm start`. Two things then differ from a normal `npm start` and both used to be silent
+// traps: the panel's port arrives as SERVER_PORT (not PORT), and `--env-file` never runs.
+
+const { spawn } = require('node:child_process');
+
+/** Run `node backend/server.js` and resolve once it logs its listening line. */
+function bootServer(extraEnv, cwd = ROOT, unset = []) {
+  const env = { ...process.env, JWT_SECRET: 'x'.repeat(48), ...extraEnv };
+  // An empty variable still counts as "set" for process.loadEnvFile, so remove it entirely
+  // when the test means "the panel does not define this".
+  for (const key of unset) delete env[key];
+  const child = spawn(process.execPath, [path.join(ROOT, 'backend', 'server.js')], {
+    cwd,
+    env,
+    stdio: ['ignore', 'pipe', 'pipe']
+  });
+  let output = '';
+  const ready = new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`server did not start:\n${output}`)), 20000);
+    const onData = (chunk) => {
+      output += chunk.toString();
+      const match = /listening on http:\/\/0\.0\.0\.0:(\d+)/.exec(output);
+      if (match) {
+        clearTimeout(timer);
+        resolve(Number(match[1]));
+      }
+    };
+    child.stdout.on('data', onData);
+    child.stderr.on('data', onData);
+    child.on('exit', (code) => {
+      clearTimeout(timer);
+      reject(new Error(`server exited with ${code}:\n${output}`));
+    });
+  });
+  return { child, ready, output: () => output };
+}
+
+test('APK-13 — the server listens on the panel port when only SERVER_PORT is set', async () => {
+  const port = 4300 + Math.floor(Math.random() * 400);
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rr-panel-port-'));
+  const boot = bootServer({ SERVER_PORT: String(port), DB_PATH: path.join(dir, 'db.sqlite'), PORT: '' });
+  try {
+    const listening = await boot.ready;
+    assert.equal(listening, port, 'the process must bind the allocation the panel gave it');
+    const health = await (await fetch(`http://127.0.0.1:${port}/api/health`)).json();
+    assert.equal(health.status, 'ok');
+    assert.equal(health.app, 'RideRise LK');
+  } finally {
+    boot.child.kill('SIGKILL');
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('APK-14 — a .env next to package.json is read even when the panel runs the file directly', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rr-panel-dotenv-'));
+  fs.writeFileSync(
+    path.join(dir, '.env'),
+    'JWT_SECRET=' + 'y'.repeat(48) + '\nFIREBASE_PROJECT_ID=rideriselk-dotenv-test\nFIREBASE_API_KEY=test-key\n'
+  );
+  const port = 4700 + Math.floor(Math.random() * 200);
+  const boot = bootServer(
+    { SERVER_PORT: String(port), DB_PATH: path.join(dir, 'db.sqlite'), PORT: '' },
+    dir,
+    ['FIREBASE_PROJECT_ID', 'FIREBASE_API_KEY']
+  );
+  try {
+    const listening = await boot.ready;
+    const health = await (await fetch(`http://127.0.0.1:${listening}/api/health`)).json();
+    // Without the automatic .env load the panel would report firebaseAuth:false and nobody
+    // could register, even though .env was sitting right there.
+    assert.equal(health.capabilities.firebaseAuth, true, boot.output());
+    assert.match(boot.output(), /Firebase Auth configured for project "rideriselk-dotenv-test"/);
+  } finally {
+    boot.child.kill('SIGKILL');
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
