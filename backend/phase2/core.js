@@ -3,6 +3,7 @@
 
 const crypto = require('node:crypto');
 const fs = require('node:fs');
+const path = require('node:path');
 
 /* ------------------------------- primitives ------------------------------- */
 const nowIso = () => new Date().toISOString();
@@ -366,10 +367,17 @@ function createPushSender() {
     const filePath = process.env.FCM_SERVICE_ACCOUNT_FILE || '';
     try {
       let raw = inline;
-      if (!raw && filePath && fs.existsSync(filePath)) raw = fs.readFileSync(filePath, 'utf8');
+      // Relative paths are resolved from the repository root (like .env and
+      // scripts/check_setup.js do), so `npm start` works from any directory.
+      const resolvedPath = filePath
+        ? (path.isAbsolute(filePath) ? filePath : path.resolve(__dirname, '..', '..', filePath))
+        : '';
+      if (!raw && resolvedPath && fs.existsSync(resolvedPath)) raw = fs.readFileSync(resolvedPath, 'utf8');
       if (!raw) {
         serviceAccount = false;
-        loadError = 'FCM_SERVICE_ACCOUNT_FILE / FCM_SERVICE_ACCOUNT_JSON not set';
+        loadError = resolvedPath
+          ? `FCM_SERVICE_ACCOUNT_FILE not found: ${resolvedPath}`
+          : 'FCM_SERVICE_ACCOUNT_FILE / FCM_SERVICE_ACCOUNT_JSON not set';
         return false;
       }
       serviceAccount = JSON.parse(raw);

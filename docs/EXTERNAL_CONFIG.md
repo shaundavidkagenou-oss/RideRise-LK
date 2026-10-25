@@ -24,7 +24,7 @@ pieces your current environment already has.
 | **Firebase email/password auth** | Firebase project + web app config; Email/Password provider enabled | free | Real rider accounts, verification email, password reset, persistent sessions | Sign-in form renders **disabled** with an explanation; only the demo presets work |
 | Map tiles | OSM (no key) or MapTiler/Mapbox/Thunderforest key | OSM free under usage policy; commercial hosts have free tiers then paid **verify** | Street basemap under guild live markers | Markers still render on a blank grid; map shows an offline/tile-error state |
 | Voice / walkie-talkie relay | TURN service (Twilio NTS, Metered, Cloudflare) or self-hosted coturn | free tier then per-GB **verify** | Calls between devices on mobile networks/NAT | STUN-only: works on some Wi-Fi pairs, fails on many carrier networks |
-| Push notifications | Firebase project + service-account JSON | FCM is free | Server-side delivery to registered devices | In-app realtime + badges only |
+| Push notifications | Firebase project + service-account JSON | FCM is free | Server-side delivery to registered devices | **Configured here** (`secrets/`, `push:true`); in-app realtime remains the fallback |
 | FCM in the APK | `google-services.json` (supplied) + Android Studio build | free | A device token the app can register | The SDK-free APK has no Play Services; `android/` has the Gradle project but Gradle was not run here — see §6 |
 | Google Play publishing | Play Console account, AAB, privacy/data-safety forms | one-time registration fee **verify** | Public distribution | Sideload the APK only |
 | Hosting | Node 22 host + persistent disk + TLS domain | varies | Public access | Local/LAN only |
@@ -184,6 +184,14 @@ reports `turnRelay: false`.
 
 Fees: FCM is free for standard messaging. Quota: per-project message rates, not per-user
 billing.
+
+**Server side — configured:** the service account you supplied is installed at
+`secrets/firebase-service-account.json` (mode 600, git-ignored) and `.env` points at it. Its
+RSA key signs the exact RS256 assertion the sender uses, its project and sender id match the
+Android app, and `/api/health` reports `"push":true`; `POST /api/admin/push/test` reached the
+HTTPS call and was stopped only by this sandbox's blocked egress
+(`{"sent":0,"reason":"fetch failed"}` with a `push_delivery_log` row). Validate anywhere with
+`npm run check:fcm` (`--online` to exchange a real OAuth token).
 
 **Device side:** the shipped SDK-free APK still has **no Firebase SDK**, so it cannot obtain a
 registration token. `android/` is now a complete Android Studio project with the Firebase BoM

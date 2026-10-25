@@ -6,7 +6,7 @@ script, the OAuth client and the server-side Google token verifier were all remo
 passwordless links, and no client-side-only "login". This document covers what was built, how
 it works, and the exact steps to connect your own Firebase project.
 
-> **State of this repository:** the code is complete (88 automated tests, 30 of them for
+> **State of this repository:** the code is complete (93 automated tests, 30 of them for
 > authentication) and **your Firebase project is configured**: `rideriselk`
 > (`FIREBASE_PROJECT_ID=rideriselk` in `.env`, git-ignored). The browser can now create real
 > accounts, and Google will deliver the verification and password-reset emails.
@@ -277,7 +277,7 @@ report what you see and it can be adapted.
 
 ## 9. What is tested vs. what waits for your Firebase project
 
-### Tested automatically (`npm test`, 88 tests total)
+### Tested automatically (`npm test`, 93 tests total)
 
 `tests/auth.firebase.test.js` (23 tests, real verifier, locally-signed ID tokens):
 
@@ -314,7 +314,7 @@ report what you see and it can be adapted.
 - sign-out clears both the RideRise token and the Firebase session
 - Settings → Sign-in & security shows the provider and requests a password reset
 
-Also updated: the smoke/flow suites still pass with the new sign-in screen (88/88).
+Also updated: the smoke/flow suites still pass with the new sign-in screen (93/93).
 
 ### Awaiting your Firebase project (cannot be tested here)
 

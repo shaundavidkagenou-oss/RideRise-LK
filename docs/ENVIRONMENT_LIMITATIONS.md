@@ -17,7 +17,7 @@ this is the honest record of what that environment supports.
 | Flutter SDK / Dart SDK | ❌ | Flutter app could not be compiled here |
 | Android SDK / Gradle / Kotlin toolchain | ❌ | Gradle cannot resolve dependencies here; the SDK-free pipeline ships the APK and the `android/` Gradle project is written but unbuilt |
 | Android emulator or physical device | ❌ | APK verified statically with two independent tools, not installed |
-| Firebase project & credentials | ❌ | Auth/FCM can be *configured* (project `rideriselk`, `google-services.json`, web config) but not exercised against Google's servers |
+| Firebase project & credentials | ❌ (partially) | Project `rideriselk`, web config, `google-services.json` and the FCM service account are installed and validated locally (RSA sign/verify, project match), but no call to Google's servers can be made from here |
 | Outbound access to `firebase`, Google identity endpoints, CDNs | ❌ | Real Firebase sign-up, verification email, ID-token verification and FCM delivery cannot be executed in-sandbox |
 | SMS/email delivery | ❌ | Support addresses are configuration, not live mailboxes |
 
@@ -41,11 +41,12 @@ this is the honest record of what that environment supports.
    clearly-labelled **local demo bridge** so every role and journey is testable without a
    Firebase project. Google OAuth was removed. See `FIREBASE_AUTH.md`.
 
-4. **Push notifications: server sending + a complete Android FCM Gradle build.**
+4. **Push notifications: server sending is configured; the Android FCM build is complete.**
    The in-app notification centre, `POST /api/devices`, FCM HTTP v1 sender, notification
-   service, channel and deep links all exist, and `android/` is an Android Studio project with
-   the studio's `google-services.json`. Delivery still needs a service account on the server
-   and a Gradle build on a device; neither could be run here.
+   service, channel and deep links all exist, the service account is installed and validated
+   (`npm run check:fcm`, `/api/health` → `"push":true`), and `android/` is an Android Studio
+   project with the studio's `google-services.json`. What is missing is a Gradle build on a
+   Play-enabled device and, in this sandbox only, outbound HTTPS to Google.
 
 5. **APK: custom reproducible pipeline** (`aapt2 → ecj → d8 → zipalign → apksigner`) rather
    than Gradle. This produces a genuinely signed, installable APK in this environment and is

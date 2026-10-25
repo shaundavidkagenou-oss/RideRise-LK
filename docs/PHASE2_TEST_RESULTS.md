@@ -9,18 +9,23 @@ sandbox, **no physical Android device and no emulator**.
 > Results and the tested-vs-awaiting-configuration split are in
 > [`FIREBASE_AUTH.md`](FIREBASE_AUTH.md) §9.
 >
+> **Update — FCM server credentials.** `tests/fcm.credentials.test.js` adds **5** tests over
+> `scripts/verify_fcm_credentials.js`: the service account parses, its RSA key signs and verifies
+> the exact RS256 assertion the sender builds, its project/sender id match the Android config,
+> the file is owner-only and untracked, and `createPushSender().status()` reports it. Suite: **93/93**.
+>
 > **Update — Android push (FCM) build.** `tests/android.push.test.js` adds **7** static tests
 > over `scripts/verify_android_push.js` (**35 checks**): Gradle plugin/BoM/messaging, manifest
 > service + channel `riderise_default`, Java bridge and deep-link contract, `POST /api/devices`,
 > git-ignore hygiene, and the real `google-services.json` (package id, sender id and project id
-> all match `rideriselk`). The suite is now **88/88**.
+> all match `rideriselk`). The suite is now **93/93**.
 > **Gradle was not executed** in this environment and no token or notification was produced —
 > see [`../android/firebase/README.md`](../android/firebase/README.md) §1.
 
 Reproduce everything:
 
 ```bash
-npm test                       # 88 node:test tests (Phase 1 + Phase 2 UI + Firebase auth + Android push), serially
+npm test                       # 93 node:test tests (Phase 1 + Phase 2 UI + Firebase auth + Android push + FCM creds), serially
 npm run probe:admin            # 36-check studio-admin capability probe (needs PROBE_BASE)
 ```
 
@@ -42,9 +47,10 @@ jsdom environments exhaust a 4 GB sandbox.
 | `scripts/probe_admin.js` — admin capability probe | **36 / 36 pass, 0 failed** |
 | `tests/auth.firebase.test.js` — Firebase ID-token auth | **23 / 23 pass** |
 | `tests/ui.auth.test.js` — Firebase sign-in / verification UI | **7 / 7 pass** |
-| `tests/android.push.test.js` — FCM/Gradle wiring (static) | **7 / 7 pass** (35 verifier checks) |
+| `tests/android.push.test.js` — FCM/Gradle wiring (static) | **7 / 7 pass** (37 verifier checks) |
+| `tests/fcm.credentials.test.js` — service account + RS256 assertion | **5 / 5 pass** |
 
-Current total: **88 automated tests + 106 API behaviour assertions + 36 admin capability
+Current total: **93 automated tests + 106 API behaviour assertions + 36 admin capability
 checks.** The 51-test Phase 2 snapshot below is kept as the original record.
 
 `tests/api.test.js` also pins two honesty rules as regressions: `/api/voice/ice` must never

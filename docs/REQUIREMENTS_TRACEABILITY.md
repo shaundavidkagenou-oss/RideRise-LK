@@ -25,7 +25,7 @@ Each row states where the requirement is implemented and how it is evidenced.
 | **16** | Age-appropriate 16–17 protections: privacy defaults, visibility settings, friend/message controls, block/report everywhere, no DOB/phone/address display, no location sale/disclosure, consent before permissions, secure deletion, retention rules | Minor defaults, `profile_visibility`, `allow_*`, delete cascade | Tests 4, 5, 6, 18, 26 |
 | **17** | Bottom nav Home/Explore/Stunts/Guilds/Profile; Friends/Messages, Parts, Events, Notifications, Safety, Settings reachable; consistent iconography; transitions; skeletons; empty states; retry; pull-to-refresh pattern; pagination; responsive; screen-reader labels; contrast; EN/SI/TA architecture; no motion that hides controls | `index.html`, `app.js`, CSS, `i18n.js` | UI 2, 3; `docs/ARCHITECTURE.md` §6 |
 | **18** | Real schema for every listed entity, secure auth/authorization on every read/write, no client-side privilege edits, media/input validation, rate limits, spam/IDOR/upload protection, secure transport, retention, error handling, indexes, no credentials in source, no public DB | `backend/schema.sql`, `server.js`, `services.js` | Tests 3, 4, 7, 10, 24, 25, 27; `docs/DATABASE_SCHEMA.md` |
-| **19** | Test the complete journey (all listed scenarios), fix build errors/crashes/broken navigation, don't mark features complete on screen existence alone | 88 automated tests incl. 7 complete UI journeys + 30 Firebase-auth + 7 Android/FCM wiring checks | `docs/TEST_RESULTS.md`, `docs/PHASE2_TEST_RESULTS.md` |
+| **19** | Test the complete journey (all listed scenarios), fix build errors/crashes/broken navigation, don't mark features complete on screen existence alone | 93 automated tests incl. 7 complete UI journeys + 30 Firebase-auth + 7 Android/FCM wiring + 5 FCM credential checks | `docs/TEST_RESULTS.md`, `docs/PHASE2_TEST_RESULTS.md` |
 | **20** | Deliverables 1–8 | `release/apk/*`, source, backend, APK, build docs, external-config list, test results, admin guide | `README.md` §1 |
 
 ## Intentional, documented gaps
@@ -33,7 +33,7 @@ Each row states where the requirement is implemented and how it is evidenced.
 | Gap | Why | What is needed |
 |---|---|---|
 | Live Firebase sign-up / verification email | No Firebase project in the sandbox | `docs/FIREBASE_AUTH.md` §7 checklist |
-| FCM push delivery | Firebase project + Android client config exist and the Gradle build is complete, but Gradle has not run in this sandbox (no Android SDK/Maven) and no device was available; the server also needs a service account | Run `android/` in Android Studio on a Play-enabled phone; add `FCM_SERVICE_ACCOUNT_FILE` (`android/firebase/README.md`, `PHASE2_FIREBASE_PUSH.md` §2) |
+| FCM push delivery | Server side complete and validated (service account installed, `push:true`, RS256 assertion verified); Android client wired and statically verified | Run `android/` in Android Studio on a Play-enabled phone, then `npm run check:fcm -- --online` on the server (`android/firebase/README.md`, `PHASE2_FIREBASE_PUSH.md`) |
 | Flutter/Firebase-native build | SDKs unavailable in this environment; equivalent shipped | Studio decision; migration paths documented |
 | Real Sinhala/Tamil translations | Requires native-speaker review; architecture + dictionaries are in place with EN complete, SI/TA covering navigation/banners/CTAs | Translation pass |
 | Physical-device QA | No emulator/device | Install the release APK on a test phone |

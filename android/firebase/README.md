@@ -22,23 +22,30 @@ the OS token cache never becomes a credential.
 
 ## 1. What is verified, and what is not
 
-Verified in this repository (`npm test`, `npm run check:android-push`):
+Verified in this repository (`npm test`, `npm run check:android-push`, `npm run check:fcm`):
 
 - the Gradle project is complete and self-consistent — wrapper 8.9, AGP 8.7.3, Google
   services plugin 4.5.0, Firebase BoM 35.1.0, `firebase-messaging`, no Analytics;
+- the **server service account** (`secrets/firebase-service-account.json`, git-ignored, mode
+  600) parses, uses an RSA-2048 key, and signs the exact RS256 assertion the push sender
+  builds; its project and sender id match the Android app (`rideriselk` / `614966302540`);
 - the manifest declares the service, channel (`riderise_default`), icon and colour, and the
   ids match the server *and* the native constant;
 - the Java bridge, the deep-link hand-off and the web client agree on names
   (`requestPushToken`, `onPushToken`, `deep_link`, `riderise_push`/`fcm_token`);
 - `google-services.json` parses, belongs to `lk.shaunstudios.riderise`, and matches the
   `FIREBASE_PROJECT_ID` / sender id in `.env`;
-- the file is git-ignored and untracked.
+- the file is git-ignored and untracked, and no tracked file contains the private key.
 
 **Not verified — do not assume it works:**
 
 - Gradle has **not** been run here (no Android SDK/Maven access in the development sandbox),
   so dependency resolution, AAPT2, D8 and signing are unproven for this module;
 - no device or emulator, so no FCM token was ever issued and no notification was displayed;
+- the server reaches Firebase only as far as this sandbox allows: `POST /api/admin/push/test`
+  with a registered (fake) token produced `{"sent":0,"status":"error","reason":"fetch failed"}`
+  and a `push_delivery_log` row — the credential loaded and the JWT signed, then the HTTPS
+  call to Google was blocked by the sandbox egress policy, not by the config;
 - the SDK-free APK (`npm run apk`) still has **no** Play Services and can never receive push.
 
 ## 2. Project layout
@@ -55,7 +62,8 @@ Verified in this repository (`npm test`, `npm run check:android-push`):
 | `…/PushBridge.java` | Firebase token fetch + delivery to `window.RR.onPushToken` (Gradle build only) |
 | `…/RideRiseMessagingService.java` | `onNewToken`, `onMessageReceived`, notification builder |
 | `android/res/` | shared with the SDK-free pipeline (icons, theme, `ic_notification`, `rr_accent`) |
-| `scripts/verify_android_push.js` | 35 static checks (also run by `npm test`) |
+| `scripts/verify_android_push.js` | 37 static checks (also run by `npm test`) |
+| `scripts/verify_fcm_credentials.js` | `npm run check:fcm` — service-account key + project match |
 
 `MainActivity` reaches `PushBridge` by reflection. That is deliberate: the same source file
 compiles in the SDK-free pipeline, where Play Services does not exist, and the JS call simply
@@ -115,20 +123,29 @@ ships exactly the same UI bundle as the SDK-free APK.
 The server still needs its own credentials — see §5. Without them `push/status` reports
 `configured: false` and the app stores a token that nothing can deliver to.
 
-## 5. Server half (required for delivery)
+## 5. Server half (configured in this checkout)
 
-1. Firebase → **Project settings → Service accounts → Generate new private key**; store the
-   JSON outside the repo, `chmod 600`.
-2. Enable **Firebase Cloud Messaging API** in Google Cloud for project `rideriselk`
-   (otherwise FCM answers `HTTP 403`).
-3. On the server:
+The service account you supplied is installed at `secrets/firebase-service-account.json`
+(mode 600, git-ignored) and referenced from `.env`:
 
-   ```bash
-   FCM_SERVICE_ACCOUNT_FILE=/etc/riderise/firebase-service-account.json
-   FIREBASE_PROJECT_ID=rideriselk        # must be the same project as google-services.json
-   ```
+```bash
+FCM_SERVICE_ACCOUNT_FILE=secrets/firebase-service-account.json
+FIREBASE_PROJECT_ID=rideriselk        # same project as google-services.json
+```
 
-4. `curl -s localhost:3000/api/health | grep -o '"push":[a-z]*'` → `"push":true`.
+Firebase Cloud Messaging API (v1) is enabled for the project, and the legacy API is off —
+which is correct: this server only speaks HTTP v1.
+
+Verify from a networked machine (this sandbox cannot reach Google):
+
+```bash
+npm run check:fcm              # structure, RSA key, RS256 round trip, project match
+npm run check:fcm -- --online  # exchanges the assertion for a real OAuth token
+curl -s localhost:3000/api/health | grep -o '"push":[a-z]*'   # → "push":true
+```
+
+Without this file the server reports `push:false` and logs `not_configured` attempts — it never
+pretends a push was delivered.
 
 ## 6. Behaviour already guaranteed by the server
 
@@ -149,7 +166,8 @@ The server still needs its own credentials — see §5. Without them `push/statu
 | `Default FirebaseApp is not initialized` | `google-services.json` is not being processed: check the plugin is applied in the **app** module and the file sits in `android/app/`. |
 | `RideRisePush: Firebase Messaging unavailable` in logcat | No Google Play services on the device/emulator (use a Play-enabled image), or the APK was built by `npm run apk` (SDK-free). |
 | `RideRisePush: FCM token request failed` | Token service unreachable, or the API key in `google-services.json` is restricted to other apps. |
-| `push/status` → `configured: false` | Server has no `FCM_SERVICE_ACCOUNT_FILE`/`_JSON`, or the key lacks `private_key`. |
+| `push/status` → `configured: false` | Server has no `FCM_SERVICE_ACCOUNT_FILE`/`_JSON`, the path is wrong, or the key lacks `private_key`. Run `npm run check:fcm`. |
+| `push/status` → `configured: true` but sends log `fetch failed` | The host cannot reach `oauth2.googleapis.com` / `fcm.googleapis.com` (firewall, offline sandbox). Credentials are fine — test with `npm run check:fcm -- --online`. |
 | Server log: `HTTP 403` | Firebase Cloud Messaging API not enabled for the project. |
 | Server log: `HTTP 404` | Service account belongs to another project than the token. |
 | `HTTP 400 UNREGISTERED` | App reinstalled / token rotated — it re-registers on next sign-in. |
@@ -173,5 +191,9 @@ The server still needs its own credentials — see §5. Without them `push/statu
 |---|---|
 | `./gradlew :app:assembleDebug` in Android Studio | No Android SDK / Maven access in the development sandbox |
 | Run on a Play-enabled phone | No device or emulator |
-| Firebase service-account JSON + FCM API enabled | Google-side credentials the studio must generate |
+| Confirm the OAuth exchange with Google | Sandbox egress to `oauth2.googleapis.com` is blocked; run `npm run check:fcm -- --online` on the server |
 | Play Store upload (AAB) | Needs your Play Console account and a Play-signed key |
+
+> **Rotate the key if it ever leaves the server.** The service-account JSON was uploaded in a
+> chat session; deleting the key in Google Cloud IAM and generating a new one takes a minute and
+> invalidates the old copy. Nothing in this repository or the APK contains it.

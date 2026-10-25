@@ -17,7 +17,7 @@ Lankan BMX and freestyle riders, built for **Shaun David Studios**.
 | **Languages** | English · සිංහල · தமிழ் (localisation architecture in place) |
 | **APKs** | `release/apk/riderise-lk-phase2-debug.apk`, `…-release.apk` (signed) |
 | **Android Studio project** | `android/` — Gradle 8.9, AGP 8.7.3, Firebase Cloud Messaging (BoM 35.1.0), `google-services.json` git-ignored |
-| **Tests** | 88 automated tests (30 Firebase-auth + 7 Android/FCM wiring) + 106 Phase 2 API assertions + 36 admin capability checks — all passing |
+| **Tests** | 93 automated tests (30 Firebase-auth + 7 Android/FCM wiring + 5 FCM credentials) + 106 Phase 2 API assertions + 36 admin capability checks — all passing |
 
 ---
 
@@ -77,9 +77,10 @@ Everything from Phase 1 remains, including the existing database and users.
 
 ```bash
 npm start                                  # http://localhost:3000  (SQLite created, migrated, seeded)
-npm test                                   # 88 automated tests (serial)
+npm test                                   # 93 automated tests (serial)
 npm run apk                                # rebuild signed debug + release APKs (no SDK required)
-npm run check:android-push                 # 35 static checks of the Gradle/FCM wiring
+npm run check:android-push                 # 37 static checks of the Gradle/FCM wiring
+npm run check:fcm                          # FCM service-account validity (+ --online to call Google)
 
 cp .env.example .env                       # optional integrations (Firebase auth, map, TURN, FCM)
 node --env-file=.env backend/server.js     # run with them enabled
@@ -89,12 +90,13 @@ Node.js **22.5+** is required (the backend uses the built-in `node:sqlite` modul
 external database or paid service is needed to run it locally: with no `.env` the app starts
 fully functional and reports `push: false`, `turnRelay: false` honestly in `/api/health`.
 
-> **Push notifications.** The server sends FCM HTTP v1 and the Android client is wired end to
-> end. `android/` is a complete Android Studio project (Firebase BoM 35.1.0, `firebase-messaging`,
-> token bridge, notification service, deep links); the studio's `google-services.json` is
-> installed there and git-ignored. The SDK-free APK still has **no** Play Services, Gradle has
-> **not** been run in this environment, and no token or notification has been produced yet —
-> see [`android/firebase/README.md`](android/firebase/README.md).
+> **Push notifications.** The server sends FCM HTTP v1 with the studio's service account
+> (`secrets/`, git-ignored, validated by `npm run check:fcm`; `/api/health` → `"push":true`), and
+> the Android client is wired end to end. `android/` is a complete Android Studio project
+> (Firebase BoM 35.1.0, `firebase-messaging`, token bridge, notification service, deep links);
+> the studio's `google-services.json` is installed there and git-ignored. The SDK-free APK still
+> has **no** Play Services, Gradle has **not** been run in this environment, and no device token
+> exists yet — see [`android/firebase/README.md`](android/firebase/README.md).
 
 ### Demo rider accounts (local demo bridge — no Google account needed)
 

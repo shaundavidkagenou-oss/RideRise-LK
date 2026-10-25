@@ -168,6 +168,9 @@ if (fcmJson) {
     if (parsed.project_id && parsed.client_email && parsed.private_key) {
       fcmProject = parsed.project_id;
       ok('Firebase service account (inline JSON)', `project "${fcmProject}" — private key present (not printed)`);
+      if (!String(parsed.private_key).includes('BEGIN PRIVATE KEY')) {
+        warn('Service-account private key is not PEM', 'expected "-----BEGIN PRIVATE KEY-----"', 'Download the JSON again from Firebase → Project settings → Service accounts.');
+      }
     } else {
       fail('Firebase JSON incomplete', 'needs project_id, client_email and private_key', 'Download the key again from Firebase → Project settings → Service accounts.');
     }
@@ -182,7 +185,14 @@ if (fcmJson) {
       const parsed = JSON.parse(fs.readFileSync(fcmPath, 'utf8'));
       if (parsed.project_id && parsed.client_email && parsed.private_key) {
         fcmProject = parsed.project_id;
-        ok('Firebase service account', `project "${fcmProject}" — private key present (not printed)`);
+        const mode = (fs.statSync(fcmPath).mode & 0o777).toString(8);
+        ok('Firebase service account', `project "${fcmProject}" — private key present (not printed), file mode ${mode}`);
+        if (mode !== '600' && mode !== '400') {
+          warn('Service-account file is readable by others', `mode ${mode} on ${fcmPath}`, `chmod 600 ${fcmPath} — it contains a private key.`);
+        }
+        if (!String(parsed.private_key).includes('BEGIN PRIVATE KEY')) {
+          warn('Service-account private key is not PEM', 'expected "-----BEGIN PRIVATE KEY-----"', 'Download the JSON again from Firebase → Project settings → Service accounts.');
+        }
       } else {
         fail('Firebase service account incomplete', 'needs project_id, client_email and private_key', 'Download the key again from Firebase → Project settings → Service accounts.');
       }

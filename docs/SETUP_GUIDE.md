@@ -56,7 +56,7 @@ from the brief; it also works from Studio Console → Sign in).
 
 ```bash
 curl -s localhost:3000/api/health | python3 -m json.tool     # "phase": 2
-npm test                                                     # 88 tests, 88 pass
+npm test                                                     # 93 tests, 93 pass
 ```
 
 ---
@@ -254,7 +254,11 @@ convenient.
 Push has two independent halves. The server half works today; the device half needs the
 Gradle build.
 
-### 5a. Server half (15 minutes)
+### 5a. Server half (configured here)
+
+> **Already done for this deployment:** project `rideriselk`, the Android app, the service
+> account (`secrets/firebase-service-account.json`, mode 600, git-ignored) and the FCM v1 API.
+> `/api/health` reports `"push":true`. Re-run the steps only for a different project.
 
 1. <https://console.firebase.google.com/> → **Add project** (analytics optional).
 2. **Project settings → Your apps → Add app → Android**: package `lk.shaunstudios.riderise`.
@@ -263,18 +267,22 @@ Gradle build.
    `android/app/google-services.json` is installed (mode 600, untracked) and `npm test`
    checks that its package name and project id match the app and the server.
 3. **Project settings → Service accounts → Generate new private key.** Save the JSON outside
-   the repo, e.g. `/etc/riderise/firebase-service-account.json`, `chmod 600`.
+   the repo, e.g. `/etc/riderise/firebase-service-account.json`, `chmod 600`. For this
+   workspace it lives at `secrets/firebase-service-account.json` (git-ignored). If the key has
+   ever been shared (chat, email, a ticket), rotate it in Google Cloud IAM when setup is done.
 4. Enable the API: <https://console.cloud.google.com/> → APIs & Services → enable
    **Firebase Cloud Messaging API** for the same project.
 5. Add to the server environment and restart:
 
    ```bash
-   FCM_SERVICE_ACCOUNT_FILE=/etc/riderise/firebase-service-account.json
+   FCM_SERVICE_ACCOUNT_FILE=secrets/firebase-service-account.json   # or an absolute path
    ```
 
 6. Verify:
 
    ```bash
+   npm run check:fcm                # key parses, RS256 round trip, project matches the app
+   npm run check:fcm -- --online    # asks Google for an OAuth token (needs outbound HTTPS)
    curl -s localhost:3000/api/health | grep -o '"push":[a-z]*'      # "push":true
    npm run check:setup                                              # Firebase ✔
    ```
@@ -308,7 +316,8 @@ complete Gradle project with FCM already wired:
 4. Confirm the wiring without a device:
 
    ```bash
-   npm run check:android-push     # 35 static checks (Gradle, manifest, bridge, config)
+   npm run check:android-push     # 37 static checks (Gradle, manifest, bridge, config)
+   npm run check:fcm              # service-account key + project match
    adb logcat -s RideRisePush RideRiseFCM RideRiseLK   # token errors appear here
    ```
 

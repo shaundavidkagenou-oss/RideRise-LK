@@ -20,3 +20,8 @@ KEYSTORE-CREDENTIALS.txt
 # Firebase project config (per-project identifiers / Android API key)
 google-services.json
 android/app/google-services.json
+
+# Server-side Firebase service account (private key — never commit, never share)
+secrets/
+*service-account*.json
+*firebase-adminsdk*.json

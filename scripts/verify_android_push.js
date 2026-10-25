@@ -44,6 +44,16 @@ function json(rel) {
     return undefined;
   }
 }
+function gitLines(args) {
+  try {
+    return execFileSync('git', args, { cwd: ROOT, encoding: 'utf8' })
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean);
+  } catch {
+    return []; // no match, or not a git checkout
+  }
+}
 function trackedByGit(rel) {
   try {
     const out = execFileSync('git', ['ls-files', '--', rel], { cwd: ROOT, encoding: 'utf8' });
@@ -340,6 +350,64 @@ function runChecks(options = {}) {
       JSON.stringify(template).includes('000000000000') &&
       template.client?.[0]?.client_info?.android_client_info?.package_name === packageId,
     'android/app/google-services.json.example'
+  );
+
+  /* --------------------- server-side FCM credentials --------------------- */
+  // The service account is a real secret: only structural/project checks, never its content.
+  const localEnvText = read('.env') || '';
+  const envValue = (key) => firstMatch(localEnvText, new RegExp(`^${key}=(.*)$`, 'm'))?.trim() || '';
+  const serviceAccountPath =
+    envValue('FCM_SERVICE_ACCOUNT_FILE') ||
+    (fileExists('secrets/firebase-service-account.json') ? 'secrets/firebase-service-account.json' : '');
+  const serviceAccountFile = serviceAccountPath
+    ? path.resolve(ROOT, serviceAccountPath)
+    : '';
+  const serviceAccount = serviceAccountFile && fs.existsSync(serviceAccountFile)
+    ? (() => {
+        try {
+          return JSON.parse(fs.readFileSync(serviceAccountFile, 'utf8'));
+        } catch {
+          return null;
+        }
+      })()
+    : null;
+  const googleServices = json('android/app/google-services.json');
+
+  add(
+    'SERVER-4',
+    'Server FCM service account is present and uses the same project as the Android app',
+    serviceAccount
+      ? Boolean(serviceAccount.project_id) &&
+          (!googleServices || googleServices.project_info?.project_id === serviceAccount.project_id)
+      : true,
+    serviceAccount
+      ? `project ${serviceAccount.project_id} (private key not read)`
+      : 'No service account in this checkout — the server reports push:false until one is configured',
+    false
+  );
+
+  add(
+    'SERVER-5',
+    'git-ignored secrets directory is not tracked',
+    !trackedByGit('secrets') && gitLines(['ls-files', 'secrets']).length === 0,
+    'secrets/firebase-service-account.json'
+  );
+
+  // Compare a short slice of the *real* key (never printed) against tracked files. Placeholder
+  // "BEGIN PRIVATE KEY" text in documentation is not a leak and must not fail the check.
+  // Take the probe from the middle of the key: every 2048-bit RSA PEM starts with the same
+  // ~40 base64 characters, so a prefix would match unrelated test fixtures (and prove nothing).
+  const keyBody = serviceAccount && serviceAccount.private_key
+    ? serviceAccount.private_key.split('\n').map((line) => line.trim()).filter((line) => line && !line.includes('-----')).join('')
+    : '';
+  const keyProbe = keyBody ? keyBody.slice(Math.floor(keyBody.length / 2), Math.floor(keyBody.length / 2) + 40) : '';
+  add(
+    'SECRET-3',
+    'The service-account private key is not committed to the repository',
+    keyProbe ? gitLines(['grep', '-l', '-F', '-e', keyProbe, '--', '.']).length === 0 : true,
+    keyProbe
+      ? 'A 40-character slice of the key was searched for in every tracked file'
+      : 'No local service account in this checkout — nothing to leak'
   );
 
   /* ------------------------- the real config file ------------------------ */

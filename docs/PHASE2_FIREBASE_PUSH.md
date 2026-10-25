@@ -15,7 +15,9 @@ credential from you.
 > | Gradle project with `google-services` 4.5.0 + Firebase BoM 35.1.0 + `firebase-messaging` | written in `android/`, **never compiled by Gradle here** (no Android SDK/Maven in the sandbox) |
 > | Native token bridge, notification service, channel, deep links | written and statically verified (`npm run check:android-push`, `npm test`) |
 > | Client registration → `POST /api/devices` | wired in `web_app/app.js`, exercised by the API tests with a fake token |
-> | Server sending (FCM HTTP v1) | implemented; **disabled** until `FCM_SERVICE_ACCOUNT_FILE` is set (`/api/health` → `"push":false`) |
+> | Server sending (FCM HTTP v1) | **configured**: service account installed (`secrets/`, mode 600, git-ignored), FCM v1 API enabled, `/api/health` → `"push":true` |
+> | Credential validity | verified: RSA-2048 key signs the exact RS256 assertion; project + sender id match the Android app (`npm run check:fcm`) |
+> | Real brand-name delivery | not reachable from the sandbox: a test send logged `fetch failed` (egress blocked), so no message has reached Google |
 > | Real token / real notification on a phone | **not tested** — no device or emulator here |
 >
 > Do not claim push works before steps 1–3 succeed on your hardware.
@@ -38,30 +40,40 @@ credential from you.
 | Static verifier (35 checks) | `scripts/verify_android_push.js` |
 | Device walkthrough + troubleshooting | [`android/firebase/README.md`](../android/firebase/README.md) |
 
-## 2. Server half (15 minutes)
+## 2. Server half (already configured here)
 
-1. Firebase console → **Project settings → Service accounts → Generate new private key**.
-   Save the JSON outside the repository, e.g. `/etc/riderise/firebase-service-account.json`,
-   `chmod 600`, owned by the service user. Never commit it, never paste it into chat.
-2. Google Cloud console → APIs & Services → enable **Firebase Cloud Messaging API** for the
-   same project (otherwise FCM answers `HTTP 403`).
-3. Add to the server environment and restart:
+1. **Done:** the studio's service account is at `secrets/firebase-service-account.json`
+   (mode 600, git-ignored) and `.env` points at it with a path relative to the repository root
+   (the server resolves it from any working directory).
+2. **Done:** Firebase Cloud Messaging API (v1) is enabled in the Google Cloud project; the
+   legacy API is disabled, which is correct for this server.
+3. Environment:
 
    ```bash
-   FCM_SERVICE_ACCOUNT_FILE=/etc/riderise/firebase-service-account.json
-   FIREBASE_PROJECT_ID=rideriselk          # must equal project_info.project_id in google-services.json
+   FCM_SERVICE_ACCOUNT_FILE=secrets/firebase-service-account.json
+   FIREBASE_PROJECT_ID=rideriselk          # equals project_info.project_id in google-services.json
    ```
 
-   (`FCM_SERVICE_ACCOUNT_JSON` accepts the same JSON inline instead of a path.)
+   On a production host prefer an absolute path outside the repo
+   (`/etc/riderise/firebase-service-account.json`). `FCM_SERVICE_ACCOUNT_JSON` accepts the JSON
+   inline for secret managers.
 4. Verify:
 
    ```bash
+   npm run check:fcm                # structure, RSA key, RS256 round trip, project match
+   npm run check:fcm -- --online    # real OAuth token exchange (needs outbound HTTPS)
    curl -s localhost:3000/api/health | grep -o '"push":[a-z]*'   # → "push":true
-   npm run check:setup                                           # Firebase service account ✔
+   npm run check:setup                                            # Firebase service account ✔
    ```
 
-   The admin console (**Studio Console → Audit & push**) shows the project id and the last 40
-   delivery attempts.
+   Observed in this workspace: `push:true`, `GET /api/admin/push/status` →
+   `{"configured":true,"project_id":"rideriselk","reason":""}`, and a test send to a
+   registered (fake) token returned `{"sent":0,"status":"error","reason":"fetch failed"}`
+   with a matching `push_delivery_log` row — the credential loaded and the assertion signed,
+   then the sandbox blocked the HTTPS call to Google.
+5. **Rotate the key** if it has been shared outside the server (including this chat upload):
+   Google Cloud IAM → Service accounts → delete the key, generate a new one, replace the file.
+   Nothing in the repository or the APK embeds it.
 
 ## 3. Android half (Android Studio, ~30 minutes)
 
@@ -99,8 +111,9 @@ The web layer always makes this call — the native code never holds a session c
 ## 5. Testing and failure modes
 
 ```bash
-npm run check:android-push     # 35 static checks: Gradle, manifest, Java, web, server, secrets
-npm test                       # 88 tests, including 7 Android-push wiring tests
+npm run check:android-push     # 37 static checks: Gradle, manifest, Java, web, server, secrets
+npm run check:fcm              # service-account validity + project match (add --online to call Google)
+npm test                       # 93 tests, including 7 Android-push + 5 FCM credential tests
 ```
 
 | Symptom | Meaning |

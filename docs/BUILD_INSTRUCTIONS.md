@@ -129,10 +129,11 @@ Edit `config/brand.config.json` → `packageId`, then also update
 ## 4. Running the automated tests
 
 ```bash
-npm test                    # 88 tests: API, Firebase auth, UI journeys, Android push wiring
+npm test                    # 93 tests: API, Firebase auth, UI journeys, Android push + FCM credentials
 npm run test:api
 npm run test:ui
-npm run check:android-push  # 35 static FCM/Gradle checks (also inside `npm test`)
+npm run check:android-push  # 37 static FCM/Gradle checks (also inside `npm test`)
+npm run check:fcm           # service-account validity and project match (--online: talk to Google)
 ```
 
 The UI tests use `jsdom` to load the real `web_app/` against the real backend, sign in,
@@ -184,7 +185,7 @@ What the module does beyond the SDK-free pipeline:
    authenticated call: `window.RR.onPushToken(token)` → `POST /api/devices`.
 
 ```bash
-npm run check:android-push        # 35 static checks; also part of `npm test`
+npm run check:android-push        # 37 static checks; also part of `npm test`
 ```
 
 Push needs the server half too (`FCM_SERVICE_ACCOUNT_FILE`, FCM API enabled) — step 5 of
