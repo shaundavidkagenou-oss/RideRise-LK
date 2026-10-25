@@ -573,3 +573,25 @@ test('APK-15 — the VM setup script is complete, safe to re-run and free of sec
   assert.match(walk, /deploy\/vm\/setup\.sh rideriselk\.duckdns\.org/);
   assert.doesNotMatch(walk, /JWT_SECRET=<paste 64 random/, 'the script generates the secret now');
 });
+
+test('APK-16 — the no-card hosting guide matches what the app actually needs', () => {
+  const doc = read('docs', 'ALWAYSDATA_STEP_BY_STEP.md');
+  // The site must be created as a Node.js site running the real entry point.
+  assert.match(doc, /node backend\/server\.js/);
+  // Node 24 is required: node:sqlite is flag-free from 22.13 only.
+  assert.match(doc, /22\.13|Node\.js \*\*24/);
+  // It must tell the reader where the .env lives and that it is what breaks auth if missing.
+  assert.match(doc, /FIREBASE_API_KEY/);
+  assert.match(doc, /DB_PATH=\/home/);
+  // And it must not promise more than the free plan gives.
+  assert.match(doc, /personal use/i, 'must disclose the personal-use restriction');
+  assert.match(doc, /256 MB/);
+
+  // The assessment doc explains the decision with numbers taken from this repo.
+  const assess = read('docs', 'SERVERLESS_ASSESSMENT.md');
+  assert.match(assess, /148 distinct endpoints/);
+  assert.match(assess, /11,455 lines/);
+  assert.match(assess, /Cloud Functions/, 'must name the real migration, not a vague one');
+  assert.match(assess, /credit card/i);
+  assert.match(assess, /ALWAYSDATA_STEP_BY_STEP\.md/);
+});

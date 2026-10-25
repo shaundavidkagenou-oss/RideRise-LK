@@ -162,6 +162,8 @@ tools — is enforced in the backend.
 | HTTPS hosting + API URL in the Android shell | [`docs/BUILD_INSTRUCTIONS.md`](docs/BUILD_INSTRUCTIONS.md) |
 | **Click-by-click server setup on a panel (first deployment)** | [`docs/SERVER_SETUP_WALKTHROUGH.md`](docs/SERVER_SETUP_WALKTHROUGH.md) |
 | **Free 24/7 hosting that fits this app (VM + one setup script)** | [`docs/FREE_HOSTING_OPTIONS.md`](docs/FREE_HOSTING_OPTIONS.md) |
+| **Free hosting with no credit card (alwaysdata, 15 minutes)** | [`docs/ALWAYSDATA_STEP_BY_STEP.md`](docs/ALWAYSDATA_STEP_BY_STEP.md) |
+| **Why the server cannot simply be deleted (measured, with the alternative)** | [`docs/SERVERLESS_ASSESSMENT.md`](docs/SERVERLESS_ASSESSMENT.md) |
 | **Deploying on a hosting panel + compiling the address into the APK** | [`docs/DEPLOY_AND_BAKE.md`](docs/DEPLOY_AND_BAKE.md) |
 | Database migration and backup | [`docs/PHASE2_MIGRATION.md`](docs/PHASE2_MIGRATION.md) |
 | Admin operations | [`docs/PHASE2_ADMIN_GUIDE.md`](docs/PHASE2_ADMIN_GUIDE.md) |

@@ -195,6 +195,9 @@ DuckDNS name, then run `deploy/vm/setup.sh`.
 
 If you cannot (or will not) put a card on a cloud account:
 
+0. **alwaysdata free** — Node 24, a real disk, free HTTPS, no card, no time limit, about 15 minutes
+   of setup. This is the shortest path that keeps your PC off: see
+   [`ALWAYSDATA_STEP_BY_STEP.md`](ALWAYSDATA_STEP_BY_STEP.md).
 1. **Keep retrying Enzonic.** "Insufficient node RAM capacity" is a capacity queue, not a verdict.
    Free slots open constantly; press Start a few times a day and it may simply work. Everything is
    already configured there — port 25941, variables, branch.
