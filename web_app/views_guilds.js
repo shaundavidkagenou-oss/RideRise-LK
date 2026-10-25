@@ -284,6 +284,16 @@
         </section>
 
         ${
+          active
+            ? `<div class="guild-quicknav">
+                <button class="btn btn-secondary btn-sm" data-guild-nav="hub">🏠 Guild centre</button>
+                <button class="btn btn-secondary btn-sm" data-guild-nav="map">🗺️ Live map</button>
+                <button class="btn btn-secondary btn-sm" data-guild-nav="voice">🎙️ Voice &amp; walkie-talkie</button>
+              </div>`
+            : ''
+        }
+
+        ${
           data.canViewInternal
             ? `<div class="grid-2">
                 <section class="card">
@@ -400,6 +410,10 @@
             toast(err.message, 'error');
           }
         });
+      viewport.querySelectorAll('[data-guild-nav]').forEach((b) =>
+        b.addEventListener('click', () => (location.hash = `#/guild/${guildId}/${b.dataset.guildNav}`))
+      );
+
       const leaveBtn = viewport.querySelector('#leaveGuildBtn');
       if (leaveBtn)
         leaveBtn.addEventListener('click', async () => {

@@ -51,6 +51,8 @@
           <div class="home-hero-actions">
             <button class="btn btn-primary" id="composeBtn">${escapeHtml(t('newPostBtn'))}</button>
             <button class="btn btn-secondary" id="discoverRidersBtn">Find riders</button>
+            <button class="btn btn-secondary" id="homeLearningBtn">🎓 Learning</button>
+            <button class="btn btn-secondary" id="homeCatalogBtn">🔧 Parts &amp; builds</button>
           </div>
         </div>
         <div class="home-hero-right">
@@ -78,6 +80,8 @@
     viewport.querySelector('#feedSafetyBtn').addEventListener('click', () => (location.hash = '#/safety'));
     viewport.querySelector('#feedPreRideBtn').addEventListener('click', openSafetyChecklist);
     viewport.querySelector('#composeBtn').addEventListener('click', () => openComposer(() => loadFeed(true)));
+    viewport.querySelector('#homeLearningBtn').addEventListener('click', () => (location.hash = '#/learning'));
+    viewport.querySelector('#homeCatalogBtn').addEventListener('click', () => (location.hash = '#/catalog'));
     viewport.querySelector('#discoverRidersBtn').addEventListener('click', () => (location.hash = '#/explore'));
     viewport.querySelector('#refreshFeedBtn').addEventListener('click', () => loadFeed(true));
     let searchTimer = null;

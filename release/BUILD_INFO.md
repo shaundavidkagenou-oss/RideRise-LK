@@ -1,70 +1,96 @@
-# RideRise LK Phase 1 — APK build provenance
+# RideRise LK — APK build provenance
 
-Built on **2026-10-25** from this repository (`scripts/build_apk.sh all`) and verified
-independently with `apksigner verify` and `androguard`.
+Phase 2 build produced on **2026-10-25** from this repository with
+`scripts/build_apk.sh all` (no Android SDK or Gradle; toolchain provisions a Java runtime,
+aapt2, d8, ecj and apksigner). Verified with `apksigner verify` and `aapt2 dump badging /
+permissions`.
 
-## Artifacts
+## Phase 2 artifacts
 
 | File | Size | SHA-256 |
 |---|---|---|
-| `apk/riderise-lk-phase1-debug.apk` | 2,300,124 B | `eaa026133e857d8156988c7351db2856eac6ccded2e0155432c15b72dc2ec77d` |
-| `apk/riderise-lk-phase1-release.apk` | 2,304,219 B | `e8ffe5ca08c460e72ad6286a0dbe8eda0a0276c5f1fe9332b281c2bcb478afff` |
+| `apk/riderise-lk-phase2-debug.apk` | 2,374,741 B | `139a96da6c73da93843bd2606d090837c82dedc4a2d1b7df1128e000e54462c5` |
+| `apk/riderise-lk-phase2-release.apk` | 2,378,837 B | `983c11d5f68d5433435b43136c5170be6dba59297def849f2e62e8a09567d6f2` |
 
-Both are also listed in `apk/SHA256SUMS.txt` (verify with `sha256sum -c SHA256SUMS.txt`).
+Both are listed in `apk/SHA256SUMS.txt`; verify with `cd release/apk && sha256sum -c
+SHA256SUMS.txt`. The `.idsig` files are v4 signature sidecars.
 
-## Manifest facts (verified with androguard)
+## Manifest facts (verified)
 
 | Property | Debug | Release |
 |---|---|---|
 | Package id | `lk.shaunstudios.riderise` | `lk.shaunstudios.riderise` |
-| versionName / versionCode | `1.0.0` / `1` | `1.0.0` / `1` |
+| versionName / versionCode | `2.0.0` / `2` | `2.0.0` / `2` |
 | minSdk / targetSdk | 24 (Android 7.0) / 34 | 24 / 34 |
 | Launcher activity | `lk.shaunstudios.riderise.MainActivity` (exported) | same |
-| Permissions | `INTERNET`, `ACCESS_NETWORK_STATE`, `POST_NOTIFICATIONS` | same |
-| `android:debuggable` | `true` | absent (false) |
+| `android:debuggable` | `true` | absent |
 | `android:usesCleartextTraffic` | `false` | `false` |
 | Signature schemes | v1 + v2 + v3 | v1 + v2 + v3 |
-| Bundled app assets | 15 files under `assets/webapp/` | same |
-| Zip alignment | all STORED entries 4-byte aligned | same |
+| Bundled assets | `assets/webapp/` (the whole client) | same |
+| Zip alignment | 4-byte aligned STORED entries | same |
+
+### Declared permissions
+
+```
+android.permission.INTERNET
+android.permission.ACCESS_NETWORK_STATE
+android.permission.POST_NOTIFICATIONS
+android.permission.RECORD_AUDIO
+android.permission.MODIFY_AUDIO_SETTINGS
+android.permission.ACCESS_FINE_LOCATION
+android.permission.ACCESS_COARSE_LOCATION
+android.permission.BLUETOOTH_CONNECT
+```
+
+`RECORD_AUDIO` is requested only when a rider joins a voice room or presses PTT; location is
+requested only when they press **Start sharing** on a guild map. The WebView grants these
+capabilities only to the bundled `file://` application, never to remote pages.
 
 ## Signing certificates
 
 **Debug** — `CN=Android Debug, O=Android, C=US`
-SHA-256: `56f878acf8bd5d6b66c17b7d324186e0a154df7394be0774136dc5d2faf08583`
-SHA-1: `435acefffb4d9ded799d107824da2b568f43dd8a`
+SHA-256 `7f4f9774d06992f1715e0ad0550a5252b6c64a2d9eca49efea0b993acbc716a9`
+SHA-1 `00d797fb1512cc3b479fe7360f41831cc1bd5d69`
 
 **Release** — `CN=RideRise LK, OU=Mobile, O=Shaun David Studios, L=Colombo, ST=Western, C=LK`
-RSA 4096, validity 30 years (generated 2026-10-25)
-SHA-256: `39d8f574f99e2a35b40ed150ee2c1dd0035c12e2db17aa36a0e026f8fb25bec8`
-SHA-1: `7c132ef28161882a5386a2d7821ec88da5b59fb6`
+RSA 4096, validity 30 years, generated 2026-10-25
+SHA-256 `9f55e66c0ec49f3ef88a58b4cbb1db5e99925e0d42492aaad5935b0f068bdd09`
+SHA-1 `98ec4c24bc0d867984691e7d0e93b7f8b8715fd4`
 
-> Use the release **SHA-256** fingerprint when registering the Android OAuth client and the
-> Firebase Android app. Registering SHA-1 is not sufficient for modern Google sign-in.
+> The Phase 1 APKs kept in this folder were signed with an earlier key whose keystore was
+> lost when the build sandbox was recycled. The Phase 2 release therefore has a **new signing
+> identity**. Back up the current keystore immediately: Play Store updates require the same
+> identity forever, and it cannot be recreated.
 
 ## Key custody
 
-The release keystore lives at `android/keystore/riderise-release.keystore` and is
-**excluded from Git** (`.gitignore`). Passwords are in the neighbouring
-`KEYSTORE-CREDENTIALS.txt` (also excluded). **Back both up in a secrets manager and keep an
-offline copy.** Losing them prevents shipping updates to the same app identity; leaking them
-allows impersonation of Shaun David Studios.
+`android/keystore/riderise-release.keystore` and `KEYSTORE-CREDENTIALS.txt` are git-ignored,
+mode 600. Copy them to a secrets manager and an offline backup. They are **not** in this
+repository, not in the APK and not in any chat log.
 
-## Reproduce this build
+## Reproduce
 
 ```bash
-npm run apk            # provisions the toolchain on first run (~/.cache/riderise-apk-tools)
-sha256sum -c release/apk/SHA256SUMS.txt
+npm run apk            # debug + signed release, provisions toolchain on first run
+cd release/apk && sha256sum -c SHA256SUMS.txt
 ```
 
-Builds are deterministic in entry ordering and timestamps, but the APK bytes may differ from
-the hashes above if the source changes or a different signing key is used. The certificate
-fingerprints above remain valid only for the key stored in `android/keystore/`.
+## What this build does *not* prove
 
-## Install
+- It was **not installed on a physical device or emulator** in this environment. Installation,
+  launch, Google sign-in, microphone and location prompts, and two-device voice must be
+  verified on real hardware.
+- Push delivery is not active because no Firebase project or client token exists yet
+  (`docs/PHASE2_FIREBASE_PUSH.md`).
+- Google OAuth requires your real `GOOGLE_CLIENT_ID` and the release SHA-1/SHA-256 registered
+  in Google Cloud Console (`docs/GOOGLE_SIGNIN.md`).
 
-```bash
-adb install -r release/apk/riderise-lk-phase1-release.apk
-```
+## Play Store notes
 
-Then open **Settings → Server connection** and enter your deployed HTTPS API URL
-(`…/api/health` must return JSON). See `docs/BUILD_INSTRUCTIONS.md`.
+- The current pipeline produces an **APK**. Google Play has required **AAB** for new apps and
+  updates since August 2021; an AAB must be produced with Gradle/Android Studio (or `bundletool`
+  from Gradle output). This SDK-free pipeline cannot emit a valid AAB.
+- Play also requires: a privacy policy URL, data-safety form (location, audio, messages),
+  content rating, target API level within the current window (34 is acceptable at the time of
+  writing — check the current requirement), and a signed AAB with an upload key.
+- Sideloading the release APK is fine for studio testing; it is not a Play submission.

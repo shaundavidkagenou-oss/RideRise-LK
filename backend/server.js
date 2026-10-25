@@ -36,6 +36,44 @@ function ensureColumn(table, column, definition) {
 ensureColumn('users_private', 'suspension_until', 'TEXT');
 seedDatabase(db);
 
+// =============================================================================
+// PHASE 2 BOOTSTRAP (additive) — realtime hub, push sender, notifications and
+// the Phase 2 router. Applied after the Phase 1 schema/seed so existing users,
+// posts, guilds and messages are preserved untouched.
+// =============================================================================
+global.__rideriseDb = db;
+const phase2Core = require('./phase2/core');
+const streamHub = phase2Core.createStreamHub();
+const pushSender = phase2Core.createPushSender();
+const { notify } = phase2Core.createNotifier(db, { stream: streamHub, sendPush: pushSender.send });
+
+function auditAdmin(adminId, action, targetType, targetId, reason, metadata = {}) {
+  db.prepare(
+    `INSERT INTO admin_action_log (id, admin_id, action, target_type, target_id, reason, metadata_json, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(phase2Core.newId('aal'), adminId, action, targetType || '', targetId || '', String(reason || '').slice(0, 1000), JSON.stringify(metadata), new Date().toISOString());
+}
+
+setInterval(() => {
+  streamHub.sweep();
+  phase2Core.presenceSweep();
+}, 60_000).unref();
+
+const phase2 = require('./phase2').createRouter({
+  db,
+  brandConfig,
+  sendJson,
+  readJsonBody,
+  getAuthUser,
+  checkRateLimit,
+  stream: streamHub,
+  notifier: { notify, stream: streamHub },
+  signToken,
+  auditAdmin,
+  pushSender,
+  formatPublicProfile
+});
+
 // ---------------------------------------------------------------------------
 // Google Identity Services ID-token verification (production OAuth path)
 // Configure GOOGLE_CLIENT_ID to enable strict verification. Without it the server
@@ -150,6 +188,16 @@ function getAuthUser(req) {
     )
     .get(decoded.userId);
   if (!user || user.account_status === 'deleted') return null;
+  // Phase 2: suspension applies to existing tokens immediately, not only at sign-in.
+  if (user.account_status === 'suspended') {
+    const until = user.suspension_until ? new Date(user.suspension_until).getTime() : null;
+    if (!until || until > Date.now()) return null;
+  }
+  try {
+    phase2Core.touchPresence(user.id);
+  } catch {
+    /* presence is best-effort */
+  }
   // Temporary suspensions expire automatically
   if (user.account_status === 'suspended' && user.suspension_until) {
     if (new Date(user.suspension_until).getTime() <= Date.now()) {
@@ -415,6 +463,10 @@ const server = http.createServer(async (req, res) => {
   const pathname = parsedUrl.pathname;
 
   try {
+    // Phase 2 routes are mounted first: they add new paths and must take
+    // precedence over the Phase 1 catch-alls for /api/guilds/* and /api/admin/*.
+    if (await phase2(req, res, pathname, parsedUrl)) return;
+
     // =========================================================================
     // PUBLIC CONFIG & HEALTH
     // =========================================================================
@@ -424,7 +476,14 @@ const server = http.createServer(async (req, res) => {
         app: brandConfig.appName,
         studio: brandConfig.studioName,
         packageId: brandConfig.packageId,
-        phase: 1,
+        phase: 2,
+        capabilities: {
+          guildLiveMap: true,
+          guildVoice: true,
+          walkieTalkie: true,
+          push: pushSender.status().configured,
+          turnRelay: Boolean(process.env.TURN_URLS || process.env.TURN_URL)
+        },
         timestamp: new Date().toISOString()
       });
     }
@@ -569,6 +628,17 @@ const server = http.createServer(async (req, res) => {
     if (pathname === '/api/auth/session' && req.method === 'GET') {
       const user = getAuthUser(req);
       if (!user) {
+        const authHeader = req.headers['authorization'] || '';
+        const rawToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : null;
+        const decoded = rawToken ? verifyToken(rawToken) : null;
+        const maybe = decoded && decoded.userId ? db.prepare('SELECT account_status, suspension_reason, suspension_until FROM users_private WHERE id = ?').get(decoded.userId) : null;
+        if (maybe && maybe.account_status === 'suspended') {
+          const until = maybe.suspension_until ? ` Suspension ends ${new Date(maybe.suspension_until).toUTCString()}.` : '';
+          return sendJson(res, 403, {
+            error: 'ACCOUNT_SUSPENDED',
+            message: `This account is suspended: ${maybe.suspension_reason || 'Community guidelines violation'}.${until} You can appeal from the Safety Centre.`
+          });
+        }
         return sendJson(res, 401, { error: 'UNAUTHENTICATED', message: 'No active session.' });
       }
       const profile = user.onboarding_completed ? formatPublicProfile(user.id, user.id) : null;
@@ -2078,7 +2148,9 @@ const server = http.createServer(async (req, res) => {
     // =========================================================================
     if (pathname === '/api/stunts' && req.method === 'GET') {
       const user = getAuthUser(req);
-      const modules = db.prepare('SELECT * FROM stunt_modules ORDER BY display_order ASC').all();
+      const modules = db
+        .prepare("SELECT * FROM stunt_modules WHERE COALESCE(visibility, 'public') != 'learning_only' ORDER BY display_order ASC")
+        .all();
       const progressMap = new Map();
       if (user) {
         const rows = db.prepare('SELECT * FROM user_stunt_progress WHERE user_id = ?').all(user.id);

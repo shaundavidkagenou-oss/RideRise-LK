@@ -3,16 +3,20 @@
   "tagline": "RIDE / STUNT / CONNECT",
   "studioName": "Shaun David Studios",
   "packageId": "lk.shaunstudios.riderise",
-  "versionName": "1.0.0",
-  "versionCode": 1,
-  "phase": "Phase 1 — Community, Stunt Education, Bike Rating, Guilds, Catalog & Official Events",
+  "versionName": "2.0.0",
+  "versionCode": 2,
+  "phase": "Phase 2 — Live Guild Map, Guild Voice, Walkie-Talkie, Advanced Guilds, Learning Pathways, Enhanced Events, Catalog & Admin Console",
   "phase2Planned": [
-    "Live Ride Maps & Group Telemetry (Opt-in Only)",
-    "Guild Group Voice Channels",
-    "Walkie-Talkie Push-to-Talk Mode"
+    "Google Play App Bundle (AAB) packaging",
+    "Managed TURN relay for carrier-grade voice reliability",
+    "FCM push delivery once service-account credentials are supplied",
+    "Verified retailer price feeds (partner API)"
   ],
   "minimumAge": 16,
-  "minorAgeRange": [16, 17],
+  "minorAgeRange": [
+    16,
+    17
+  ],
   "defaultGuildMemberLimit": 50,
   "maxUploadSizeBytes": 5242880,
   "rateLimits": {
@@ -39,9 +43,21 @@
     "textSecondary": "#94A3B8"
   },
   "supportedLocales": [
-    { "code": "en", "name": "English", "nativeName": "English" },
-    { "code": "si", "name": "Sinhala", "nativeName": "සිංහල" },
-    { "code": "ta", "name": "Tamil", "nativeName": "தமிழ்" }
+    {
+      "code": "en",
+      "name": "English",
+      "nativeName": "English"
+    },
+    {
+      "code": "si",
+      "name": "Sinhala",
+      "nativeName": "සිංහල"
+    },
+    {
+      "code": "ta",
+      "name": "Tamil",
+      "nativeName": "தமிழ்"
+    }
   ],
   "sriLankaDistricts": [
     "Colombo",
@@ -74,5 +90,17 @@
     "safetyEmail": "safety@shaundavidstudios.lk",
     "privacyEmail": "privacy@shaundavidstudios.lk",
     "supportEmail": "support@shaundavidstudios.lk"
+  },
+  "features": {
+    "guildLiveMap": true,
+    "guildVoice": true,
+    "walkieTalkie": true,
+    "advancedGuildManagement": true,
+    "messageReactionsAndReceipts": true,
+    "learningPathways": true,
+    "eventWaitlists": true,
+    "adminConsole": true,
+    "pushNotifications": "requires FCM service account",
+    "turnRelay": "requires TURN server"
   }
 }

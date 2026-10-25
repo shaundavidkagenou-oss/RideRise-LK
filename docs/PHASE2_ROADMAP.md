@@ -1,4 +1,11 @@
-# Phase 2 roadmap — built to extend, not rebuild
+# Phase 2 roadmap — delivered
+
+> **Status: implemented.** This file preserves the original plan. The delivered
+> implementation lives in `backend/phase2/`, the Phase 2 screens in `web_app/`, the Android
+> permission bridge in `MainActivity.java`, and the Phase 2 APKs in `release/apk/`. Read
+> `docs/PHASE2_TEST_RESULTS.md` for verified versus unverified items.
+
+## Original plan — built to extend, not rebuild
 
 Phase 1 deliberately stops before live location, voice and walkie-talkie features. The
 architecture leaves clean seams so Phase 2 can be added without touching accounts, design,

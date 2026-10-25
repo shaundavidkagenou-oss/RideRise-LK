@@ -1,0 +1,107 @@
+# Phase 2 — Test results
+
+Run date: 2026-10-25 · Node 22.22.3 · SQLite (`node:sqlite`) · jsdom 30 · Linux x86_64
+sandbox, **no physical Android device and no emulator**.
+
+Reproduce everything:
+
+```bash
+npm test                       # 48 node:test tests (Phase 1 + Phase 2 UI)
+PORT=3123 DB_PATH=/tmp/rr-probe.sqlite node /tmp/probe.js   # harness (not committed)
+```
+
+---
+
+## 1. Automated results
+
+| Suite | Result |
+|---|---|
+| `tests/api.test.js` — Phase 1 API contract | **30 / 30 pass** |
+| `tests/ui.smoke.test.js` — shell, routes, onboarding | **4 / 4 pass** |
+| `tests/ui.flows.test.js` — real user journeys | **8 / 8 pass** |
+| `tests/ui.phase2.test.js` — Phase 2 screens | **6 / 6 pass** |
+| Phase 2 probe harness — 106 assertions | **106 / 106 pass, 0 failed** |
+
+Total: **48 automated tests + 106 API behaviour assertions.**
+
+### What the Phase 2 probe exercises
+
+- **Live map** — consent required; approximate radius for adults; 1,500 m for 16–17; precise
+  rejected for minors; non-member gets `403`; snapshot hides non-sharing members; manager
+  revoke; stop clears the marker; expired session swept.
+- **Voice** — join/leave, heartbeat, mute, participant limits, role-gated room creation,
+  signalling relay addressed to one recipient, floor acquire/conflict (409)/release,
+  walkie timeout settings, report/block, non-member denial.
+- **Guild hub** — announcements (pin/delete), discussion feed, guild events + RSVP/waitlist,
+  settings update, approval-based joins, audit log entries, appeals, rules.
+- **Learning** — five pathways, 21 trick modules + 4 maintenance lessons, prerequisites
+  locked, quiz graded server-side, `correctIndex` never leaked, 100 % required, checklist and
+  safety acknowledgement enforced, XP credited once, admin CMS publish/unpublish.
+- **Catalogue** — search/filters, comparison, compatibility verdicts, saved builds,
+  `price_lkr` only when verified, price history appended on verification, admin unlist.
+- **Messaging** — friends-only, blocked contact, typing, receipts honouring the privacy
+  preference, reactions, replies, delete tombstone, mute, retention setting, preview flag,
+  link-flag warnings.
+- **Realtime** — single-use SSE ticket, event delivery to the recipient only, ticket reuse
+  rejected.
+- **Events** — calendar filters, registration, capacity + waiting list, cancel, check-in
+  timestamp only, official badge admin-only, feature-on-home admin-only, announcement and
+  reminder fan-out.
+- **Studio console** — credential login, lockout after repeated failures, forced password
+  change, moderator email masking, news publish/unpublish, feedback triage, broadcast,
+  ban/unban/restore, report resolution, appeal resolution, audit trail.
+- **Security negatives** — suspended token rejected on unrelated endpoints, rider denied
+  admin APIs, anonymous writes rejected, unknown guild 404, map config requires auth.
+
+### Phase 2 UI checks in jsdom
+
+1. Learning pathways + lesson reader + maintenance track.
+2. Catalogue cards, compare tray and comparison table; price labels are “LKR” or
+   “Price not verified”.
+3. Events list with official badge, inline registration, calendar grid with 7 columns.
+4. Messages list, notification history, preference toggles, studio news.
+5. Guild map consent gate, hub tabs, voice lobby and pre-flight panel
+   (“Microphone — Not opened”).
+6. Studio console metrics (≥ 8 cards), moderation queue, push diagnostics.
+
+## 2. Manual checks performed in the sandbox
+
+- Server boots with a fresh database and with an existing Phase 1 database (idempotent
+  migration).
+- `/api/health` reports `phase: 2` and capability flags.
+- Preview served at `http://localhost:3000`; every new route loads without a console error.
+- Admin credential login, forced password change and re-login.
+- Map tile requests fail in the sandbox without outbound access to the tile host — the map
+  correctly shows the offline state instead of a blank “working” map.
+- Voice cannot be exercised without microphone hardware; join/leave/signalling were tested
+  at the API level.
+
+## 3. Not verified (state this to users honestly)
+
+| Item | Why | What to do |
+|---|---|---|
+| Real two-device voice/PTT call | No physical devices or emulator in the build environment | Install the APK on two phones; test on Wi-Fi and mobile data; configure TURN first |
+| Bluetooth routing | No paired headset | Test with a real headset; check `BLUETOOTH_CONNECT` grant |
+| Push delivery | No Firebase project / no client token | Follow `PHASE2_FIREBASE_PUSH.md`, then send a test push |
+| Map tiles from a commercial provider | No API key supplied | Set `MAP_PROVIDER` + `MAP_API_KEY`; verify attribution and quota |
+| Google OAuth end-to-end with real Google account | `GOOGLE_CLIENT_ID` not supplied | Follow `docs/GOOGLE_SIGNIN.md` |
+| Screen-reader walkthrough with TalkBack | No device | Test with TalkBack; focus order was reviewed in code only |
+| Sinhala/Tamil glyph rendering on device | No device fonts inspected | Test on a Sinhala/Tamil locale device; Noto fonts are expected on Android 8+ |
+| Battery drain during a 60-minute share | No device | Measure with Android Battery Historian; cadence is 45 s |
+| Load/soak beyond seed data | Sandbox data only | Load-test the API before launch |
+| Independent security audit | Out of scope | Commission a review before public launch |
+
+## 4. Regression notes
+
+Phase 1 behaviour is unchanged: 42/42 Phase 1 tests pass with Phase 2 enabled. Two contract
+details were preserved deliberately:
+
+- `/api/stunts` still returns exactly the 21 trick modules; the four maintenance lessons are
+  marked `visibility = 'learning_only'` and appear only in the learning track.
+- `POST /api/admin/events` still requires the studio **admin** role and returns
+  `OFFICIAL_STUDIO_ADMIN_ONLY` for moderators.
+
+## 5. Bug status
+
+No known failing automated checks at the time of writing. Open product limitations are
+listed in `docs/PHASE2_SECURITY_AND_PRIVACY.md` §10 and in the README’s limitations table.

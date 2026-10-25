@@ -1,7 +1,7 @@
-# RideRise LK — Phase 1
+# RideRise LK — Phase 2
 
-**RIDE / STUNT / CONNECT** — a community, learning and bike-build platform for Sri Lankan
-bicycle stunt riders, built for **Shaun David Studios**.
+**RIDE / STUNT / CONNECT** — a community, learning, guild and bike-build platform for Sri
+Lankan BMX and freestyle riders, built for **Shaun David Studios**.
 
 <p align="center">
   <img src="assets/brand/riderise_logo.png" width="240" alt="Official RideRise LK BMX sunset badge by Shaun David Studios" />
@@ -9,199 +9,189 @@ bicycle stunt riders, built for **Shaun David Studios**.
 
 | | |
 |---|---|
-| **Working app name** | RideRise LK *(configurable in `config/brand.config.json`)* |
+| **Working app name** | RideRise LK *(name/brand configurable in `config/brand.config.json`)* |
 | **Studio** | Shaun David Studios |
 | **Android package** | `lk.shaunstudios.riderise` |
-| **Version** | 1.0.0 (versionCode 1) |
+| **Version** | 2.0.0 (versionCode 2) |
 | **Minimum age** | 16 (16–17 gets youth-safety defaults) |
-| **Phase** | Phase 1 — community, stunt education, bike rating, guilds, catalog, official events |
-| **Languages** | English · සිංහල · தமிழ் (localization architecture in place) |
-| **Delivery** | Installable signed APK + editable source + real backend + database + tests + docs |
+| **Languages** | English · සිංහල · தமிழ் (localisation architecture in place) |
+| **APKs** | `release/apk/riderise-lk-phase2-debug.apk`, `…-release.apk` (signed) |
+| **Tests** | 48 automated tests + 106 Phase 2 API assertions — all passing |
 
 ---
 
-## 1. What is delivered
+## 1. What Phase 2 adds
 
-| Deliverable (spec §20) | Where |
-|---|---|
-| 1. Working Android application | `release/apk/riderise-lk-phase1-release.apk` (signed) and `…-debug.apk` |
-| 2. Complete editable project source code | `web_app/` (UI), `android/` (native shell), `backend/` (API), `config/`, `scripts/` |
-| 3. Configured backend + database schema | `backend/server.js`, `backend/schema.sql`, `backend/seed.js` (SQLite, seeded on first run) |
-| 4. Installable APK built from the actual application | `release/apk/` (+ `SHA256SUMS.txt`, `release/BUILD_INFO.md`) |
-| 5. Build & installation instructions | [`docs/BUILD_INSTRUCTIONS.md`](docs/BUILD_INSTRUCTIONS.md) |
-| 6. External configuration still required | [`docs/EXTERNAL_CONFIG.md`](docs/EXTERNAL_CONFIG.md) |
-| 7. Test results & known limitations | [`docs/TEST_RESULTS.md`](docs/TEST_RESULTS.md) |
-| 8. Admin guide (events, ranks, tutorials, parts) | [`docs/ADMIN_GUIDE.md`](docs/ADMIN_GUIDE.md) |
-| Requirement-by-requirement mapping | [`docs/REQUIREMENTS_TRACEABILITY.md`](docs/REQUIREMENTS_TRACEABILITY.md) |
+Everything from Phase 1 remains, including the existing database and users.
+
+- **Live guild map** — consent-first, off by default, approximate by default, 1.5 km fixed
+  radius for riders aged 16–17, short-lived precise option for adults (60 m, ≤10 min),
+  immediate stop, auto-expiry, no location history, manager revoke, battery-conscious 45 s
+  cadence, manual + 20 s refresh, offline/permission error states.
+- **Guild voice rooms** — real WebRTC mesh between devices, members only, join/listen-only,
+  mute, speaker/earpiece/Bluetooth routing, participant list, mic indicator, block/report,
+  no recording, honest connection states.
+- **Walkie-talkie PTT** — press-and-hold with a server-held transmission floor (overlapping
+  transmissions are impossible), instant release, 30 s timeout, channel authorization,
+  transmitting/listening/connecting/disconnected states, distinct visual language.
+- **Guild hub** — announcements with images, discussion feed, guild events + RSVP/calendar,
+  member list, roles, approvals, settings, community rules, audit log, appeals,
+  report-a-manager, public/approval/private discovery.
+- **Messaging & notifications** — realtime DM via SSE, typing indicators, receipts that
+  respect a privacy toggle, replies, reactions, delete tombstones, mute, delivery history,
+  quiet hours, notification preferences, deep links, link/scam warnings, in-app news.
+- **Events** — calendar + list views, district/category filters, registration, capacity,
+  waiting list, cancel, private check-in (timestamp only), announcements, reminders,
+  results/galleries, organiser and safety info, admin-only official studio badge, feature
+  on home, no user impersonation of the studio.
+- **Learning** — five pathways, prerequisites with rationale, beginner/intermediate/
+  advanced/maintenance tracks, checklists, server-graded quizzes, progress summaries, an
+  admin CMS, and advanced lessons framed as references, never guarantees.
+- **Parts & builds** — manufacturer/model search, LKR price filters, comparison,
+  compatibility checks labelled “Check compatibility”, saved builds, verified-retailer
+  links, price history only when verified, data-source and last-updated labels, admin
+  verification/correction.
+- **Moderation & teen safety** — report/block everywhere (including voice), moderation
+  queue with escalation notes, suspension/ban/appeal workflows, human review, spam and
+  suspicious-link limits, privacy-friendly defaults for 16–17.
+- **Studio console** — credential or Google sign-in, forced password rotation, metrics,
+  reports, appeals, users, feedback inbox, news, official events, tutorial CMS, catalogue
+  verification, broadcast, push diagnostics and an append-only audit log.
 
 ---
 
 ## 2. Run it in 60 seconds
 
 ```bash
-npm start                 # http://localhost:3000  (SQLite auto-created & seeded)
-npm test                  # 42 automated API + UI tests
-npm run apk               # rebuild signed debug + release APKs
+npm start                 # http://localhost:3000  (SQLite created, migrated and seeded)
+npm test                  # 48 automated tests
+npm run apk               # rebuild signed debug + release APKs (no SDK required)
 ```
 
-Node.js **22.5+** is required (the backend uses the built-in `node:sqlite` module).
-No external database, cloud account or paid service is needed to run Phase 1.
+Node.js **22.5+** is required (the backend uses the built-in `node:sqlite` module). No
+external database or paid service is needed to run it locally.
 
 ### Demo rider accounts (sandbox Google sign-in)
 
-The sign-in sheet includes four sandbox Google identities so every role can be tested:
-
 | Account | Role | Why it matters |
 |---|---|---|
-| `kasun.perera.demo@gmail.com` | Rider (Stunt Specialist) | Full profile, two bicycles, guild owner |
-| `roshan.fernando.demo@gmail.com` | Rider + **guild moderator** | Moderation role, dirt-jumper build |
-| `dilshan.student.demo@gmail.com` | **16–17 year old** | Youth defaults: friends-only profile, hidden from leaderboards |
-| `nethmi.admin@shaundavidstudios.lk` | **Studio administrator** | Admin console: reports, ranks, catalog, official events |
+| `kasun.perera.demo@gmail.com` | Rider (Stunt Specialist) | Full profile, guild owner |
+| `roshan.fernando.demo@gmail.com` | Rider + guild moderator | Moderation role |
+| `dilshan.student.demo@gmail.com` | **16–17 years old** | Youth defaults, location locks |
+| `nethmi.admin@shaundavidstudios.lk` | **Studio administrator** | Full console |
 
-Sign out from the header, then sign in as another account to verify RBAC differences.
+### Administrator credential
 
----
+The brief requires a working studio administrator account:
 
-## 3. Feature overview (Phase 1)
+- **username:** `admin$123$`
+- **password:** `admin$123$`
 
-**Onboarding & identity** — animated branded launch screen, Google sign-in (official
-Google Identity Services when `GOOGLE_CLIENT_ID` is set, documented sandbox bridge
-otherwise), mandatory 16+ confirmation, four legal acceptances, unique username rules,
-privacy defaults, private/public data separation, account deletion with cascade.
-
-**Rider profile** — avatar upload with crop + zoom + remove, display name, bio, district,
-preferred riding area, rank and XP progress, badges, learning progress, community
-contributions, privacy toggles, blocked list.
-
-**Progression** — seven configurable ranks (Rookie Rider → Ride Legend), server-validated
-XP with per-action caps and duplicate protection, achievements, activity history, rank
-progress bar, leaderboards filtered by overall/district/guild with an opt-out.
-
-**Bicycle profiles** — guided 13-question questionnaire (type, frame material, brand/model,
-fork, tires, wheels, bars, drivetrain, brakes, condition, safety defects, discipline,
-photos + optional cosmetic rating), transparent 0–100 **Bike Build Rating** with a
-five-part breakdown, hard safety cap when defects are reported, multi-bike garage,
-comparison view, unverified-submission labelling.
-
-**Community feed** — real-time list with categories, tags, search, pagination, likes,
-comments and replies, bookmarks, native Android share, `@mentions` (with notifications),
-edit/delete own posts, reporting, moderation states, client-side GPS stripping, and
-automatic queueing of dangerous road-stunt content for review.
-
-**Friends & messaging** — requests, accept/decline/cancel/remove, username search,
-blocking (bidirectional), **friends-only private messaging** with soft-delete-safe
-threads, timestamps, delivery status, unread counters, image attachments (5 MB),
-mute and report controls.
-
-**Guilds** — public and approval-based private guilds, emblems, categories, districts,
-owner/moderator/member roles, join/leave/invite-approval/promote/remove, announcements,
-text chat, shared posts, member limits, reporting, and strict separation of guild
-visibility from private member data.
-
-**Stunt-learning library** — 21 modules across Fundamentals, Beginner freestyle,
-Intermediate and Advanced (coach-supervised). Each module carries difficulty,
-prerequisites, bicycle suitability, protective gear, safe environment, inspection
-checklist, staged progressions, common errors, stop conditions, coaching reminder,
-SVG technique diagram and a knowledge quiz. Prerequisites, safety acknowledgement and
-100% quiz score are enforced server-side before XP is granted.
-
-**Safety Centre** — permanent entry point from navigation, tutorials, bike profiles and
-the composer, with the eight mandated safety rules, the verbatim draft safety notice,
-Sri Lankan emergency numbers, the 7-point pre-ride inspection (+25 XP once per day),
-stop conditions and reporting.
-
-**Sri Lankan parts catalog** — nine categories, searchable, verified/unverified price
-labelling ("Price not verified" is shown instead of inventing a figure), seller and
-last-verified dates, compatibility warnings, favorites, comparison and administrator
-curation.
-
-**Official studio events** — featured/upcoming/past/cancelled events, capacity and
-registration deadlines, eligibility, equipment requirements, organiser contact,
-announcements, recap, registration/cancellation, community events clearly distinguished
-from official Shaun David Studios events, suspicious-event reporting, and no public
-attendee details.
-
-**Administration** — role-gated console with operational metrics, report queue with
-resolution notes and reporter notification, content moderation, rank editor, catalog
-verification, official event publishing, and an audit log of every administrative action.
-
-**Design & accessibility** — dark charcoal foundation with orange/amber accents taken
-from the supplied badge, a token-based design system, skeleton loaders, empty states,
-retry states, pull-to-refresh style controls, responsive layout, reduced-motion and
-high-contrast modes, screen-reader labels and English/Sinhala/Tamil architecture.
+It can monitor and ban accounts, delete messages, receive all reports and feedback, publish
+news and official events, and do everything an ordinary rider can do. The first sign-in
+forces a password change, and every moderation action is blocked until it is changed. In
+production (`NODE_ENV=production`) the development default is refused and a random password
+is generated once in the server log unless `ADMIN_USERNAME`/`ADMIN_PASSWORD` are set.
 
 ---
 
-## 4. Architecture at a glance
+## 3. Architecture
 
 ```
-android/   Native Android shell (WebView + whitelisted JS bridge + share sheet + file picker)
-web_app/   The application UI (vanilla ES5+/ES2017 JS, design-system CSS, i18n dictionaries)
-backend/   Node.js HTTP API (auth, RBAC, XP engine, bike-rating engine) + SQLite schema/seed
-config/    Brand, package, ranks, districts, rate limits and theme tokens
-scripts/   APK build pipeline (aapt2 → ecj → d8 → zip-align → apksigner) and icon generator
-tests/     node:test API suite + jsdom end-to-end UI flows
-docs/      Build, configuration, admin, security, schema, safety and traceability docs
-release/   Signed APKs, checksums and build metadata
+android/   Native shell (WebView, microphone/location permission bridge, Bluetooth route,
+           share sheet, file picker). Permission grants are limited to bundled file:// assets.
+web_app/   The UI: shell, map engine (slippy tiles, no external JS), realtime client (SSE),
+           WebRTC/PTT engine, and every screen.
+backend/   Node HTTP API + SQLite. Phase 1 core plus backend/phase2/* feature routers.
+config/    Brand, package, ranks, districts, rate limits, theme, version.
+scripts/   APK pipeline (aapt2 → ecj → d8 → zip-align → apksigner) and icon generator.
+tests/     node:test API suites + jsdom end-to-end UI flows (Phase 1 and Phase 2).
+docs/      Setup, admin, security, schema, migration, build and test documentation.
+release/   Signed APKs, checksums and build provenance.
 ```
 
-Why this shape: the UI is a single codebase that runs both in the browser (instant
-preview/testing) and inside the Android WebView, so the Android app and the live preview
-never drift. Every privileged action is enforced in `backend/server.js`; the client can
-never award XP, change a rank, read another rider's email or message a non-friend.
-
-Detailed docs: [architecture](docs/ARCHITECTURE.md) · [database](docs/DATABASE_SCHEMA.md) ·
-[safety & moderation](docs/SAFETY_AND_MODERATION.md) · [Phase 2 roadmap](docs/PHASE2_ROADMAP.md).
+The same UI runs in a browser and inside the Android WebView, so the preview and the app
+never drift. Every privileged action — XP, ranks, location, voice access, messages, admin
+tools — is enforced in the backend.
 
 ---
 
-## 5. Honest status: what is real, what needs your credentials
+## 4. What you must configure
 
-**Fully implemented and tested here:** every feature listed in section 3, the backend,
-database, authorization rules, XP and bike-rating engines, moderation workflow, APK
-build and signing, and 42 automated tests (30 API + 12 end-to-end UI).
+| Step | Doc |
+|---|---|
+| Google sign-in (`GOOGLE_CLIENT_ID`, Android OAuth client + SHA-1) | [`docs/GOOGLE_SIGNIN.md`](docs/GOOGLE_SIGNIN.md) |
+| Map tile provider (`MAP_PROVIDER`, `MAP_API_KEY`, optional proxy) | [`docs/PHASE2_VOICE_AND_MAP.md`](docs/PHASE2_VOICE_AND_MAP.md) |
+| TURN relay for reliable voice (`TURN_URLS`, `TURN_SECRET`) | [`docs/PHASE2_VOICE_AND_MAP.md`](docs/PHASE2_VOICE_AND_MAP.md) |
+| Firebase Cloud Messaging (step by step) | [`docs/PHASE2_FIREBASE_PUSH.md`](docs/PHASE2_FIREBASE_PUSH.md) |
+| HTTPS hosting + API URL in the Android shell | [`docs/BUILD_INSTRUCTIONS.md`](docs/BUILD_INSTRUCTIONS.md) |
+| Database migration and backup | [`docs/PHASE2_MIGRATION.md`](docs/PHASE2_MIGRATION.md) |
+| Admin operations | [`docs/PHASE2_ADMIN_GUIDE.md`](docs/PHASE2_ADMIN_GUIDE.md) |
+| APK build and installation walkthrough | [`docs/PHASE2_APK_BUILD.md`](docs/PHASE2_APK_BUILD.md) |
+| Security and privacy review | [`docs/PHASE2_SECURITY_AND_PRIVACY.md`](docs/PHASE2_SECURITY_AND_PRIVACY.md) |
 
-**Requires configuration you must supply (integration points are built, not mocked):**
+---
 
-1. `GOOGLE_CLIENT_ID` — enables real Google Identity Services sign-in and ID-token
-   verification. Without it the app uses the clearly labelled sandbox OAuth bridge so
-   Phase 1 remains testable offline. → [`docs/GOOGLE_SIGNIN.md`](docs/GOOGLE_SIGNIN.md)
-2. **Firebase Cloud Messaging** credentials for push notifications (permission request
-   and in-app notification centre already work; FCM token registration is the remaining
-   step). → [`docs/EXTERNAL_CONFIG.md`](docs/EXTERNAL_CONFIG.md)
-3. **Hosting + HTTPS domain** for the backend, and that URL entered in
-   *Settings → Server connection* inside the Android app.
-4. **Legal review** of the draft Terms, Privacy Policy, Community Guidelines and Safety
-   Notice by qualified Sri Lankan counsel.
-5. **Keystore custody** — the release key is generated locally and git-ignored; back it
-   up in a secrets manager (`android/keystore/KEYSTORE-CREDENTIALS.txt`).
+## 5. Honest status
 
-No prices, retailers, stock levels or product claims were invented: catalog rows are
-labelled **verified** or **"Price not verified"**, and every listing carries a
-compatibility warning and a last-verified date.
+**Implemented and verified here:** every feature in section 1, the schema and migration,
+server-side authorization, realtime messaging, map/voice/PTT engines, APK build and signing,
+and the automated suites listed in [`docs/PHASE2_TEST_RESULTS.md`](docs/PHASE2_TEST_RESULTS.md).
+
+**Requires your credentials or hardware:**
+
+1. **Google OAuth** — the real client id and Android client registration.
+2. **Map tiles** — a provider key for production traffic (OpenStreetMap works without a key
+   under its usage policy).
+3. **TURN relay** — needed for calls across strict carrier NAT.
+4. **Firebase push** — server sending is implemented, but the app does not yet obtain an FCM
+   token; until steps 7–8 of the Firebase guide are done, notifications are in-app only.
+5. **Legal review** of the draft terms, privacy policy, community rules, minor policy and
+   safety notice.
+
+**Not verified in this environment:** installation on a physical device or emulator,
+two-device voice/PTT audio, Bluetooth routing, TalkBack and Sinhala/Tamil rendering on real
+hardware, push delivery, and battery drain over a long session. These are listed explicitly
+in `docs/PHASE2_TEST_RESULTS.md` rather than claimed as tested.
+
+**Not claimed:** end-to-end encrypted messaging, full legal compliance, recording of voice
+rooms, or a Play Store submission. The APK pipeline outputs APK files; Play requires an AAB
+built with Gradle (documented in `docs/PHASE2_APK_BUILD.md`).
 
 ---
 
 ## 6. Safety stance (non-negotiable)
 
-RideRise LK **never** rewards dangerous riding, road stunts, traffic riding or escalating
-physical risk. XP comes from learning modules, inspections, verified knowledge, positive
-community help and official event participation. Advanced pathways are gated behind
-prerequisites, explicit acknowledgement and a requirement for qualified in-person
-coaching in a padded/controlled facility. The full draft safety notice is shown verbatim
-in the Safety Centre and in the Terms, and every tutorial states that an online guide
-cannot guarantee safety.
+RideRise LK never rewards dangerous riding, road stunts, traffic riding or escalating
+physical risk. XP comes from learning, inspections, verified knowledge, positive community
+help and official event participation. Advanced pathways are gated behind prerequisites,
+explicit acknowledgement and a recommendation for qualified in-person coaching in a
+controlled facility. Every tutorial states that an online guide cannot guarantee safety.
+
+Live location is opt-in, approximate by default, time-limited and unavailable in precise
+form to riders aged 16–17. Voice rooms and PTT are never recorded, microphones start closed,
+and no feature invents a “connected” state when a service is unavailable.
+
+No prices, retailers, stock levels, certifications or reviews were invented: catalogue rows
+are labelled verified or **“Price not verified”**, and compatibility is always presented as
+something to check, never a guarantee.
 
 ---
 
-## 7. Phase 2 readiness
+## 7. Documentation index
 
-The database, authorization model, rank engine, guild membership roles and design system
-were built to accept Phase 2 (opt-in live ride maps, guild group voice, walkie-talkie)
-without a rewrite. Location fields are deliberately absent from Phase 1 so no retrofitting
-of consent is needed — see [`docs/PHASE2_ROADMAP.md`](docs/PHASE2_ROADMAP.md).
+- [`docs/PHASE2_MIGRATION.md`](docs/PHASE2_MIGRATION.md) — schema changes and migration steps
+- [`docs/PHASE2_ADMIN_GUIDE.md`](docs/PHASE2_ADMIN_GUIDE.md) — full studio console guide
+- [`docs/PHASE2_VOICE_AND_MAP.md`](docs/PHASE2_VOICE_AND_MAP.md) — map, voice, PTT, TURN
+- [`docs/PHASE2_FIREBASE_PUSH.md`](docs/PHASE2_FIREBASE_PUSH.md) — Firebase + FCM walkthrough
+- [`docs/PHASE2_SECURITY_AND_PRIVACY.md`](docs/PHASE2_SECURITY_AND_PRIVACY.md) — controls and gaps
+- [`docs/PHASE2_TEST_RESULTS.md`](docs/PHASE2_TEST_RESULTS.md) — automated and manual results
+- [`docs/PHASE2_APK_BUILD.md`](docs/PHASE2_APK_BUILD.md) — compile, sign, install, Play notes
+- Phase 1: [architecture](docs/ARCHITECTURE.md) · [database](docs/DATABASE_SCHEMA.md) ·
+  [safety & moderation](docs/SAFETY_AND_MODERATION.md) · [admin guide](docs/ADMIN_GUIDE.md) ·
+  [build instructions](docs/BUILD_INSTRUCTIONS.md)
 
 ---
 
-*RideRise LK Phase 1 · © 2026 Shaun David Studios. Logo supplied by the studio; used only
-as the product brand asset, unmodified in proportion.*
+*RideRise LK Phase 2 · © 2026 Shaun David Studios. Logo supplied by the studio; used as the
+brand asset, unmodified in proportion.*

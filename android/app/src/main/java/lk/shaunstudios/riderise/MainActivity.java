@@ -6,6 +6,9 @@ import android.app.Activity;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
+import android.media.AudioManager;
+import android.webkit.GeolocationPermissions;
+import android.webkit.PermissionRequest;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.net.Uri;
@@ -45,12 +48,17 @@ public class MainActivity extends Activity {
     private static final String KEY_API_BASE = "api_base_url";
     private static final int REQ_FILE_CHOOSER = 1001;
     private static final int REQ_NOTIFICATIONS = 1002;
+    private static final int REQ_MICROPHONE = 1003;
+    private static final int REQ_LOCATION = 1004;
     private static final String APP_ASSET_URL = "file:///android_asset/webapp/index.html";
 
     private WebView webView;
     private ProgressBar progressBar;
     private ImageView splashLogo;
     private ValueCallback<Uri[]> filePathCallback;
+    private PermissionRequest pendingAudioRequest;
+    private GeolocationPermissions.Callback pendingGeoCallback;
+    private String pendingGeoOrigin;
     private long lastBackPressedAt = 0L;
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -73,6 +81,7 @@ public class MainActivity extends Activity {
         settings.setAllowFileAccessFromFileURLs(true);
         settings.setAllowUniversalAccessFromFileURLs(true);
         settings.setMediaPlaybackRequiresUserGesture(true);
+        settings.setGeolocationEnabled(true);
         settings.setCacheMode(WebSettings.LOAD_DEFAULT);
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
         settings.setUserAgentString(settings.getUserAgentString() + " RideRiseLK/1.0 (Android)");
@@ -162,6 +171,61 @@ public class MainActivity extends Activity {
             return true;
         }
 
+        /**
+         * Grant microphone capture only to the bundled application assets, and only after
+         * the rider has approved the Android runtime permission. Remote pages never receive
+         * camera or microphone access through this shell.
+         */
+        @Override
+        public void onPermissionRequest(final PermissionRequest request) {
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    boolean trusted = isBundledOrigin(request.getOrigin());
+                    boolean wantsAudio = false;
+                    for (String resource : request.getResources()) {
+                        if (PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(resource)) {
+                            wantsAudio = true;
+                        }
+                    }
+                    if (!trusted || !wantsAudio) {
+                        request.deny();
+                        return;
+                    }
+                    if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                        request.grant(new String[] { PermissionRequest.RESOURCE_AUDIO_CAPTURE });
+                    } else {
+                        pendingAudioRequest = request;
+                        requestPermissions(new String[] { Manifest.permission.RECORD_AUDIO }, REQ_MICROPHONE);
+                    }
+                }
+            });
+        }
+
+        /** Geolocation is only offered to the bundled app, and only with an explicit tap. */
+        @Override
+        public void onGeolocationPermissionsShowPrompt(final String origin, final GeolocationPermissions.Callback callback) {
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    if (!isBundledOrigin(Uri.parse(origin))) {
+                        callback.invoke(origin, false, false);
+                        return;
+                    }
+                    if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+                            || checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+                        callback.invoke(origin, true, false);
+                        return;
+                    }
+                    pendingGeoCallback = callback;
+                    pendingGeoOrigin = origin;
+                    requestPermissions(
+                            new String[] { Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION },
+                            REQ_LOCATION);
+                }
+            });
+        }
+
         @Override
         public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> callback, FileChooserParams params) {
             if (filePathCallback != null) {
@@ -203,6 +267,36 @@ public class MainActivity extends Activity {
 
     @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        if (requestCode == REQ_MICROPHONE) {
+            boolean granted = grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED;
+            if (pendingAudioRequest != null) {
+                if (granted) {
+                    pendingAudioRequest.grant(new String[] { PermissionRequest.RESOURCE_AUDIO_CAPTURE });
+                } else {
+                    pendingAudioRequest.deny();
+                }
+                pendingAudioRequest = null;
+            }
+            if (!granted) {
+                Toast.makeText(this, "Microphone denied. Voice and walkie-talkie need microphone access.", Toast.LENGTH_LONG).show();
+            }
+            return;
+        }
+        if (requestCode == REQ_LOCATION) {
+            boolean granted = false;
+            for (int result : grantResults) {
+                if (result == PackageManager.PERMISSION_GRANTED) granted = true;
+            }
+            if (pendingGeoCallback != null) {
+                pendingGeoCallback.invoke(pendingGeoOrigin, granted, false);
+                pendingGeoCallback = null;
+                pendingGeoOrigin = null;
+            }
+            if (!granted) {
+                Toast.makeText(this, "Location denied. Guild map sharing stays off.", Toast.LENGTH_LONG).show();
+            }
+            return;
+        }
         if (requestCode == REQ_NOTIFICATIONS) {
             boolean granted = grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED;
             Toast.makeText(
@@ -239,6 +333,51 @@ public class MainActivity extends Activity {
                 });
     }
 
+    /** Only file:// assets bundled inside the APK may use device capture APIs. */
+    private boolean isBundledOrigin(Uri origin) {
+        if (origin == null) return false;
+        String scheme = origin.getScheme();
+        return "file".equals(scheme) && (origin.getHost() == null || origin.getHost().isEmpty() || "localhost".equals(origin.getHost()));
+    }
+
+    /**
+     * Route call audio to a connected Bluetooth headset where Android exposes it.
+     * WebView does not implement setSinkId, so this is the supported native path.
+     * Returns true when a SCO route was requested.
+     */
+    private boolean requestBluetoothAudioRoute() {
+        try {
+            AudioManager audio = (AudioManager) getSystemService(AUDIO_SERVICE);
+            if (audio == null) return false;
+            audio.setMode(AudioManager.MODE_IN_COMMUNICATION);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                if (checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+                    return false;
+                }
+            }
+            audio.startBluetoothSco();
+            audio.setBluetoothScoOn(true);
+            return true;
+        } catch (Exception e) {
+            Log.w(TAG, "Bluetooth audio routing unavailable", e);
+            return false;
+        }
+    }
+
+    private boolean releaseBluetoothAudioRoute() {
+        try {
+            AudioManager audio = (AudioManager) getSystemService(AUDIO_SERVICE);
+            if (audio == null) return false;
+            audio.stopBluetoothSco();
+            audio.setBluetoothScoOn(false);
+            audio.setMode(AudioManager.MODE_NORMAL);
+            return true;
+        } catch (Exception e) {
+            Log.w(TAG, "Bluetooth audio release failed", e);
+            return false;
+        }
+    }
+
     /** Minimal, whitelisted native bridge. No reflection, no file system or credential access. */
     private final class NativeBridge {
         @JavascriptInterface
@@ -262,6 +401,16 @@ public class MainActivity extends Activity {
             send.putExtra(Intent.EXTRA_SUBJECT, title == null ? "RideRise LK" : title);
             send.putExtra(Intent.EXTRA_TEXT, text == null ? "" : text);
             startActivity(Intent.createChooser(send, "Share via"));
+        }
+
+        @JavascriptInterface
+        public boolean routeAudioToBluetooth() {
+            return requestBluetoothAudioRoute();
+        }
+
+        @JavascriptInterface
+        public boolean resetAudioRoute() {
+            return releaseBluetoothAudioRoute();
         }
 
         @JavascriptInterface

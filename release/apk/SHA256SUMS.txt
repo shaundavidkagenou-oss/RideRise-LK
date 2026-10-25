@@ -1,2 +1,4 @@
-eaa026133e857d8156988c7351db2856eac6ccded2e0155432c15b72dc2ec77d  release/apk/riderise-lk-phase1-debug.apk
-e8ffe5ca08c460e72ad6286a0dbe8eda0a0276c5f1fe9332b281c2bcb478afff  release/apk/riderise-lk-phase1-release.apk
+139a96da6c73da93843bd2606d090837c82dedc4a2d1b7df1128e000e54462c5  riderise-lk-phase2-debug.apk
+983c11d5f68d5433435b43136c5170be6dba59297def849f2e62e8a09567d6f2  riderise-lk-phase2-release.apk
+eaa026133e857d8156988c7351db2856eac6ccded2e0155432c15b72dc2ec77d  riderise-lk-phase1-debug.apk
+e8ffe5ca08c460e72ad6286a0dbe8eda0a0276c5f1fe9332b281c2bcb478afff  riderise-lk-phase1-release.apk

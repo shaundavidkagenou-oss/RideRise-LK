@@ -16,7 +16,7 @@
       <section class="welcome-hero">
         <div class="welcome-badge-glow">${logo(196, 'welcome-badge')}</div>
         <div class="welcome-copy">
-          <span class="pill-badge pill-orange">PHASE 1 · SRI LANKA</span>
+          <span class="pill-badge pill-orange">PHASE 2 · SRI LANKA</span>
           <h1 class="welcome-title">RIDERISE <span class="lk-gold">LK</span></h1>
           <p class="welcome-tagline">RIDE / STUNT / CONNECT</p>
           <p class="welcome-sub">A community, learning and bike-build platform for Sri Lankan bicycle stunt riders — built by <strong>Shaun David Studios</strong>.</p>
@@ -26,6 +26,9 @@
             <li><span>🔧</span> Transparent Bike Build Rating (0–100)</li>
             <li><span>🛒</span> Sri Lankan parts catalog with verification labels</li>
             <li><span>📅</span> Official Shaun David Studios events</li>
+            <li><span>🗺️</span> Opt-in guild live map with approximate sharing</li>
+            <li><span>🎙️</span> Guild voice rooms and press-to-talk walkie-talkie</li>
+            <li><span>🎓</span> Structured pathways plus a maintenance track</li>
           </ul>
           <div class="welcome-actions">
             <button type="button" class="btn btn-google" id="googleSignInBtn">
@@ -541,7 +544,7 @@
         )} · Shaun David Studios</div>
         <article class="legal-body">${markdownToHtml(doc.content_markdown)}</article>
         <div class="callout callout-warn" style="margin-top:14px">
-          These documents are working drafts for Phase 1 and require review by qualified Sri Lankan legal counsel before commercial release.
+          These documents are working drafts and require review by qualified Sri Lankan legal counsel before commercial release.
         </div>`,
         footer: '<button class="btn btn-secondary" data-modal-close="1">Close</button>',
         onMount(root) {

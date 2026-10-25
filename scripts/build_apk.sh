@@ -50,6 +50,9 @@ shutil.copytree(src, dst)
 print("java runtime ready at", dst)
 PY
 fi
+chmod +x "$TOOLS/java/bin/"* 2>/dev/null || true
+find "$TOOLS/java" -name "jspawnhelper" -exec chmod +x {} \; 2>/dev/null || true
+
 JAVA="$TOOLS/java/bin/java"
 KEYTOOL="$TOOLS/java/bin/keytool"
 
@@ -193,7 +196,7 @@ sign_apk() {
 build_variant() {
   local variant="$1"
   if [ "$variant" = "release" ]; then compile_and_link release false; else compile_and_link debug true; fi
-  local out="$OUT/riderise-lk-phase1-$variant.apk"
+  local out="$OUT/riderise-lk-phase2-$variant.apk"
   sign_apk "$variant" "$out"
   ls -la "$out"
   python3 - "$out" <<'PY'

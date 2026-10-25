@@ -15,9 +15,11 @@
         <button class="btn btn-secondary btn-sm" data-nav="#/notifications" aria-label="Notifications">
           🔔 ${state.unreadNotifications ? `<span class="badge-counter">${state.unreadNotifications}</span>` : ''}
         </button>
-        <button class="btn btn-secondary btn-sm" data-nav="#/friends" aria-label="Friends and messages">
+        <button class="btn btn-secondary btn-sm" data-nav="#/messages" aria-label="Messages">
           💬 ${state.unreadMessages ? `<span class="badge-counter">${state.unreadMessages}</span>` : ''}
         </button>
+        <button class="btn btn-secondary btn-sm hide-xs" data-nav="#/learning" aria-label="Learning pathways">🎓 <span class="hide-sm">Learn</span></button>
+        <button class="btn btn-secondary btn-sm hide-xs" data-nav="#/news" aria-label="Studio news">📰</button>
         <button class="btn btn-safety btn-sm" data-nav="#/safety" aria-label="Safety Centre">🛡️ <span class="hide-sm">${escapeHtml(t('safetyCentreBtn'))}</span></button>
         <button class="btn btn-secondary btn-sm hide-xs" data-nav="#/parts" aria-label="Parts catalog">🛒 <span class="hide-sm">Parts</span></button>
         <button class="btn btn-secondary btn-sm hide-xs" data-nav="#/events" aria-label="Studio events">📅 <span class="hide-sm">Events</span></button>
@@ -133,6 +135,8 @@
     const segments = pathPart.split('/').filter(Boolean);
     const root = segments[0] || 'home';
 
+    // Stop live sessions (location pings, audio, timers) owned by the previous screen.
+    RR.runRouteCleanups();
     if (window.scrollY > 0) window.scrollTo({ top: 0, behavior: state.reducedMotion ? 'auto' : 'smooth' });
     paintChrome();
 
@@ -175,7 +179,26 @@
         window.RRGuilds.renderGuilds(viewport);
         break;
       case 'guild':
-        window.RRGuilds.renderGuildDetail(viewport, segments[1]);
+        if (segments[2] === 'hub') window.RRGuildHub.renderGuildHub(viewport, segments[1], query);
+        else if (segments[2] === 'voice') {
+          if (segments[3]) window.RRVoice.renderVoiceRoom(viewport, segments[1], segments[3]);
+          else window.RRVoice.renderGuildVoice(viewport, segments[1]);
+        } else if (segments[2] === 'map') window.RRLive.renderGuildMap(viewport, segments[1]);
+        else window.RRGuilds.renderGuildDetail(viewport, segments[1]);
+        break;
+      case 'learning':
+        if (segments[1] === 'module' && segments[2]) window.RRLearning.renderLesson(viewport, segments[2]);
+        else window.RRLearning.renderLearning(viewport);
+        break;
+      case 'catalog':
+        window.RRCatalog.renderCatalog(viewport);
+        break;
+      case 'messages':
+        if (segments[1]) window.RRMessages.renderThread(viewport, segments[1]);
+        else window.RRMessages.renderThreads(viewport);
+        break;
+      case 'news':
+        window.RRMessages.renderNews(viewport);
         break;
       case 'profile':
         window.RRProfile.renderProfile(viewport);
@@ -193,22 +216,23 @@
         window.RRExplore.renderParts(viewport);
         break;
       case 'events':
-        window.RRExplore.renderEvents(viewport);
+        window.RREvents.renderEvents(viewport);
         break;
       case 'safety':
         window.RRExplore.renderSafety(viewport);
         break;
       case 'notifications':
-        window.RRExplore.renderNotifications(viewport);
+        window.RRMessages.renderNotifications(viewport);
         break;
       case 'admin':
-        window.RRAdmin.renderAdmin(viewport);
+        if (segments[1] === 'legacy') window.RRAdmin.renderAdmin(viewport);
+        else window.RRAdminConsole.renderAdminConsole(viewport, query);
         break;
       default:
         viewport.innerHTML = `<div class="card">${RR.emptyState({
           icon: '🧭',
           title: 'Page not found',
-          body: 'That route does not exist in RideRise LK Phase 1.',
+          body: 'That route does not exist in RideRise LK.',
           actionHtml: '<button class="btn btn-primary" onclick="location.hash=\'#/home\'">Back to the feed</button>'
         })}</div>`;
     }

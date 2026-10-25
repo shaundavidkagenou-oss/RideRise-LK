@@ -187,7 +187,7 @@
         <button class="btn btn-secondary btn-sm" onclick="location.hash='#/explore'">← Explore</button>
       </div>
       <div class="callout callout-warn">
-        <strong>No payment, no delivery promise.</strong> Phase 1 does not process payments or guarantee stock. Prices marked <em>“Price not verified”</em> are unconfirmed by Shaun David Studios. Always verify compatibility and safety with a qualified bicycle mechanic.
+        <strong>No payment, no delivery promise.</strong> RideRise LK does not process payments or guarantee stock. Prices marked <em>“Price not verified”</em> are unconfirmed by Shaun David Studios. Always verify compatibility and safety with a qualified bicycle mechanic.
       </div>
       <div class="card">
         <div class="feed-toolbar">

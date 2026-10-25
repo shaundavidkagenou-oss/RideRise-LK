@@ -128,6 +128,22 @@
     }
   }
 
+  /* --------------------------- route lifecycle ------------------------------ */
+  const routeCleanups = [];
+  function onRouteCleanup(fn) {
+    if (typeof fn === 'function') routeCleanups.push(fn);
+  }
+  function runRouteCleanups() {
+    while (routeCleanups.length) {
+      const fn = routeCleanups.pop();
+      try {
+        fn();
+      } catch (e) {
+        /* a cleanup failure must not block navigation */
+      }
+    }
+  }
+
   /* ---------------------------------- i18n --------------------------------- */
   function t(key) {
     const dict = (window.RIDERISE_I18N || {})[state.locale] || window.RIDERISE_I18N.en;
@@ -345,6 +361,8 @@
     xpProgress,
     requireAuthOrPrompt,
     isAndroidShell,
+    onRouteCleanup,
+    runRouteCleanups,
     STORAGE_API_BASE
   };
 })();
