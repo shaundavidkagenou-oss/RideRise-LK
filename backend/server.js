@@ -3289,7 +3289,9 @@ const server = http.createServer(async (req, res) => {
 
 if (require.main === module) {
   server.listen(PORT, HOST, () => {
-    console.log(`RideRise LK by Shaun David Studios — Backend & App Server listening on http://${HOST}:${PORT}`);
+    // Bracket an IPv6 bind (HOST=::) so the address is readable and copy-pasteable.
+    const shownHost = HOST.includes(':') ? `[${HOST}]` : HOST;
+    console.log(`RideRise LK by Shaun David Studios — Backend & App Server listening on http://${shownHost}:${PORT}`);
   });
 }
 

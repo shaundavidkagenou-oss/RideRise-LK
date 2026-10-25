@@ -576,15 +576,24 @@ test('APK-15 — the VM setup script is complete, safe to re-run and free of sec
 
 test('APK-16 — the no-card hosting guide matches what the app actually needs', () => {
   const doc = read('docs', 'ALWAYSDATA_STEP_BY_STEP.md');
-  // The site must be created as a Node.js site running the real entry point.
-  assert.match(doc, /node backend\/server\.js/);
+  // The site must be created as a Node.js site running the real entry point, by absolute path.
+  assert.match(doc, /node \/home\/YOURNAME\/riderise\/backend\/server\.js/);
+  // The one-line ways to get the code there, both verified against the real repository.
+  assert.match(doc, /git clone --depth 1 -b arena\/127f733a-riderise-lk/);
+  assert.match(doc, /codeload\.github\.com\/shaundavidkagenou-oss\/RideRise-LK\/tar\.gz/);
+  // An IPv6-capable bind for their proxy, with a documented way out.
+  assert.match(doc, /HOST=::/);
+  // A smoke test before touching the panel, so failures happen in the terminal.
+  assert.match(doc, /PORT=8100 node backend\/server\.js/);
   // Node 24 is required: node:sqlite is flag-free from 22.13 only.
   assert.match(doc, /22\.13|Node\.js \*\*24/);
   // It must tell the reader where the .env lives and that it is what breaks auth if missing.
   assert.match(doc, /FIREBASE_API_KEY/);
-  assert.match(doc, /DB_PATH=\/home/);
+  // The database lands inside the app folder, which is the persistent part of the account.
+  assert.match(doc, /backend\/riderise_lk\.sqlite/);
+  assert.match(doc, /\/home\/YOURNAME\/riderise/);
   // And it must not promise more than the free plan gives.
-  assert.match(doc, /personal use/i, 'must disclose the personal-use restriction');
+  assert.match(doc, /for personal needs/i, 'must disclose the personal-use restriction');
   assert.match(doc, /256 MB/);
 
   // The assessment doc explains the decision with numbers taken from this repo.
