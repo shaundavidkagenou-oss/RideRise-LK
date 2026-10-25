@@ -71,6 +71,8 @@ Total: **48 automated tests + 106 API behaviour assertions.**
 - `/api/health` reports `phase: 2` and capability flags.
 - Preview served at `http://localhost:3000`; every new route loads without a console error.
 - Admin credential login, forced password change and re-login.
+- Static serving: gzip on text assets, ETag/304 revalidation, `no-cache` SPA shell (checked
+  with `curl -D -`).
 - Map tile requests fail in the sandbox without outbound access to the tile host — the map
   correctly shows the offline state instead of a blank “working” map.
 - Voice cannot be exercised without microphone hardware; join/leave/signalling were tested

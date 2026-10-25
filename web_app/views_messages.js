@@ -271,7 +271,7 @@
     viewport.querySelector('#blockThread').addEventListener('click', async () => {
       if (!window.confirm(`Block ${friend ? friend.display_name : 'this rider'}? You will not see each other and cannot message.`)) return;
       try {
-        await api('/api/blocks', { method: 'POST', body: { blocked_user_id: friendId, reason: 'Blocked from conversation' } });
+        await api('/api/blocks', { method: 'POST', body: { blockedUserId: friendId, reason: 'Blocked from conversation' } });
         toast('Rider blocked. They are not notified.', 'success');
         location.hash = '#/messages';
       } catch (err) {

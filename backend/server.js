@@ -5,6 +5,7 @@ const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
+const zlib = require('node:zlib');
 const { DatabaseSync } = require('node:sqlite');
 
 const brandConfig = JSON.parse(
@@ -435,6 +436,49 @@ function calculateAgeFromDob(dobStr) {
     age--;
   }
   return age;
+}
+
+const COMPRESSIBLE = new Set(['.html', '.css', '.js', '.json', '.svg', '.txt', '.md']);
+const gzipCache = new Map();
+
+/**
+ * Serve a static file with ETag revalidation, a short cache lifetime and gzip for text
+ * assets. The APK never ships a CDN, so compressing here keeps weak-connection loads small.
+ */
+function sendStaticFile(req, res, filePath, { cacheSeconds = 300, download = false } = {}) {
+  const stat = fs.statSync(filePath);
+  const ext = path.extname(filePath).toLowerCase();
+  const etag = `W/"${stat.size.toString(16)}-${Math.floor(stat.mtimeMs).toString(16)}"`;
+  const headers = {
+    'Content-Type': MIME_TYPES[ext] || 'text/plain; charset=utf-8',
+    'Cache-Control': cacheSeconds > 0 ? `public, max-age=${cacheSeconds}` : 'no-cache',
+    ETag: etag,
+    Vary: 'Accept-Encoding'
+  };
+  if (download) {
+    headers['Content-Disposition'] = `attachment; filename="${path.basename(filePath)}"`;
+    headers['Content-Length'] = stat.size;
+  }
+  if (req.headers['if-none-match'] === etag) {
+    res.writeHead(304, headers);
+    return res.end();
+  }
+  const acceptsGzip = String(req.headers['accept-encoding'] || '').includes('gzip');
+  if (acceptsGzip && COMPRESSIBLE.has(ext) && stat.size > 1024 && stat.size < 4 * 1024 * 1024) {
+    const key = `${filePath}:${stat.size}:${Math.floor(stat.mtimeMs)}`;
+    let compressed = gzipCache.get(key);
+    if (!compressed) {
+      compressed = zlib.gzipSync(fs.readFileSync(filePath), { level: 6 });
+      if (gzipCache.size > 60) gzipCache.clear();
+      gzipCache.set(key, compressed);
+    }
+    headers['Content-Encoding'] = 'gzip';
+    headers['Content-Length'] = compressed.length;
+    res.writeHead(200, headers);
+    return res.end(compressed);
+  }
+  res.writeHead(200, headers);
+  return fs.createReadStream(filePath).pipe(res);
 }
 
 const MIME_TYPES = {
@@ -1699,7 +1743,24 @@ const server = http.createServer(async (req, res) => {
         'DELETE FROM friendships WHERE (requester_id = ? AND addressee_id = ?) OR (requester_id = ? AND addressee_id = ?)'
       ).run(user.id, blockedId, blockedId, user.id);
 
-      return sendJson(res, 200, { message: 'User blocked. They can no longer view your profile, friend you, or message you.' });
+      // Phase 2: a block ends live location sharing and live audio participation for both
+      // people immediately — a blocked account must not keep seeing where someone is.
+      try {
+        db.prepare('DELETE FROM live_location_sessions WHERE user_id IN (?, ?)').run(user.id, blockedId);
+        db.prepare('DELETE FROM voice_participants WHERE user_id IN (?, ?)').run(user.id, blockedId);
+        db.prepare('DELETE FROM voice_signals WHERE from_user IN (?, ?) OR to_user IN (?, ?)').run(
+          user.id,
+          blockedId,
+          user.id,
+          blockedId
+        );
+      } catch (err) {
+        /* Phase 2 tables absent on an un-migrated database */
+      }
+
+      return sendJson(res, 200, {
+        message: 'User blocked. They can no longer view your profile, friend you, or message you. Any live location share or voice room was ended.'
+      });
     }
 
     if (pathname.startsWith('/api/blocks/') && req.method === 'DELETE') {
@@ -2097,7 +2158,16 @@ const server = http.createServer(async (req, res) => {
           return sendJson(res, 400, { error: 'OWNER_CANNOT_LEAVE', message: 'Guild owner must transfer ownership before leaving.' });
         }
         db.prepare('DELETE FROM guild_memberships WHERE guild_id = ? AND user_id = ?').run(guildId, viewer.id);
-        return sendJson(res, 200, { message: `You left ${guild.name}.` });
+        // Leaving a guild stops live location sharing and removes live audio participation.
+        try {
+          db.prepare('DELETE FROM live_location_sessions WHERE guild_id = ? AND user_id = ?').run(guildId, viewer.id);
+          db.prepare(
+            'DELETE FROM voice_participants WHERE user_id = ? AND room_id IN (SELECT id FROM voice_rooms WHERE guild_id = ?)'
+          ).run(viewer.id, guildId);
+        } catch (err) {
+          /* Phase 2 tables absent on an un-migrated database */
+        }
+        return sendJson(res, 200, { message: `You left ${guild.name}. Live sharing and voice ended.` });
       }
 
       if (req.method === 'POST' && action === 'messages') {
@@ -2785,9 +2855,7 @@ const server = http.createServer(async (req, res) => {
       const fileName = path.basename(pathname);
       const filePath = path.join(__dirname, '..', 'assets', 'brand', fileName);
       if (fs.existsSync(filePath)) {
-        const ext = path.extname(filePath).toLowerCase();
-        res.writeHead(200, { 'Content-Type': MIME_TYPES[ext] || 'application/octet-stream' });
-        return fs.createReadStream(filePath).pipe(res);
+        return sendStaticFile(req, res, filePath, { cacheSeconds: 86400 });
       }
     }
 
@@ -2795,13 +2863,7 @@ const server = http.createServer(async (req, res) => {
       const fileName = path.basename(pathname);
       const filePath = path.join(__dirname, '..', 'release', 'apk', fileName);
       if (fs.existsSync(filePath)) {
-        const stat = fs.statSync(filePath);
-        res.writeHead(200, {
-          'Content-Type': 'application/vnd.android.package-archive',
-          'Content-Disposition': `attachment; filename="${fileName}"`,
-          'Content-Length': stat.size
-        });
-        return fs.createReadStream(filePath).pipe(res);
+        return sendStaticFile(req, res, filePath, { cacheSeconds: 86400, download: true });
       }
     }
 
@@ -2810,9 +2872,8 @@ const server = http.createServer(async (req, res) => {
     const webAppRoot = path.join(__dirname, '..', 'web_app');
     const resolvedFile = path.normalize(path.join(webAppRoot, staticPath));
     if (resolvedFile.startsWith(webAppRoot) && fs.existsSync(resolvedFile) && fs.statSync(resolvedFile).isFile()) {
-      const ext = path.extname(resolvedFile).toLowerCase();
-      res.writeHead(200, { 'Content-Type': MIME_TYPES[ext] || 'text/plain; charset=utf-8' });
-      return fs.createReadStream(resolvedFile).pipe(res);
+      const isShell = resolvedFile.endsWith('index.html');
+      return sendStaticFile(req, res, resolvedFile, { cacheSeconds: isShell ? 0 : 300 });
     }
 
     // SPA Fallback to index.html

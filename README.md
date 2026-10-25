@@ -186,6 +186,7 @@ something to check, never a guarantee.
 - [`docs/PHASE2_FIREBASE_PUSH.md`](docs/PHASE2_FIREBASE_PUSH.md) — Firebase + FCM walkthrough
 - [`docs/PHASE2_SECURITY_AND_PRIVACY.md`](docs/PHASE2_SECURITY_AND_PRIVACY.md) — controls and gaps
 - [`docs/PHASE2_TEST_RESULTS.md`](docs/PHASE2_TEST_RESULTS.md) — automated and manual results
+- [`docs/PHASE2_PERFORMANCE_ACCESSIBILITY.md`](docs/PHASE2_PERFORMANCE_ACCESSIBILITY.md) — performance and a11y audit
 - [`docs/PHASE2_APK_BUILD.md`](docs/PHASE2_APK_BUILD.md) — compile, sign, install, Play notes
 - Phase 1: [architecture](docs/ARCHITECTURE.md) · [database](docs/DATABASE_SCHEMA.md) ·
   [safety & moderation](docs/SAFETY_AND_MODERATION.md) · [admin guide](docs/ADMIN_GUIDE.md) ·
