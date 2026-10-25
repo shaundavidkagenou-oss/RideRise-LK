@@ -8,11 +8,15 @@ const { JSDOM, VirtualConsole } = require('jsdom');
 
 process.env.DB_PATH = `/tmp/riderise_ui_test_${Date.now()}.sqlite`;
 process.env.JWT_SECRET = 'ui-test-secret';
-// UI 4 creates a throwaway rider through the dev-only demo bridge, which requires an
-// explicit opt-in now that Google sign-in has been removed.
-process.env.ALLOW_DEMO_SIGNIN = '1';
+// Opt-in sample content so the feed, guilds and profiles have something to render.
+process.env.SEED_DEMO = '1';
 
-const { server, db } = require('../backend/server.js');
+const firebaseTestAuth = require('./helpers/firebase_test_auth');
+firebaseTestAuth.useTestFirebaseEnv();
+
+const { server, db, firebaseAuth } = require('../backend/server.js');
+
+firebaseTestAuth.installTestCertificates(firebaseAuth);
 
 let baseUrl = '';
 
@@ -88,18 +92,13 @@ test('UI 1 — launch splash, welcome hero and the email sign-in form render', a
     assert.match(document.body.textContent, /at least 16 years old/);
     assert.match(document.body.textContent, /Never ride stunts on public roads/i);
 
-    // Sign-in is email + password (Firebase). With no Firebase project in the test
-    // environment the form must say so instead of pretending to work.
-    assert.ok(document.getElementById('authCard'), 'auth card must render');
+    // Sign-in is email + password (Firebase) and nothing else.
+    await waitFor(() => document.getElementById('authCard'), 12000, 'auth card');
     assert.ok(document.getElementById('signInForm'), 'email sign-in form must render');
     assert.match(document.body.textContent, /Firebase Authentication/);
-    assert.match(document.body.textContent, /not configured on this server/i);
-
-    // The demo-account sheet is still available for evaluation builds.
-    click(window, document.getElementById('demoSignInBtn'));
-    await waitFor(() => document.querySelector('.oauth-accounts'), 4000, 'demo account sheet');
-    assert.match(document.querySelector('.oauth-sub').textContent, /not\s+Firebase Authentication|legacy sandbox bridge/i);
-    assert.ok(document.querySelectorAll('.oauth-account').length >= 4);
+    assert.equal(document.getElementById('demoSignInBtn'), null, 'there must be no demo sign-in button');
+    assert.doesNotMatch(document.body.textContent, /demo account/i);
+    assert.doesNotMatch(document.body.textContent, /sandbox/i);
     assert.equal(errors.length, 0, `unexpected JS errors: ${errors.join(' | ')}`);
   } finally {
     dom.window.close();
@@ -107,13 +106,10 @@ test('UI 1 — launch splash, welcome hero and the email sign-in form render', a
 });
 
 test('UI 2 — sign in, feed renders with seeded community content', async () => {
-  const { window, document, errors, dom } = await bootApp();
+  const auth = await firebaseTestAuth.signInAsSampleRider(baseUrl, 'kasun');
+  assert.equal(auth.status, 200, JSON.stringify(auth.json));
+  const { window, document, errors, dom } = await bootApp(auth.json.token);
   try {
-    await waitFor(() => document.getElementById('demoSignInBtn'), 12000, 'demo sign-in button');
-    click(window, document.getElementById('demoSignInBtn'));
-    await waitFor(() => document.querySelector('[data-preset="kasun"]'), 4000, 'preset account');
-    click(window, document.querySelector('[data-preset="kasun"]'));
-
     await waitFor(() => locationHash(window) === '#/home' || document.querySelector('.post-card'), 12000, 'home feed');
     await waitFor(() => document.querySelectorAll('.post-card').length > 0, 12000, 'posts to render');
 
@@ -131,12 +127,9 @@ test('UI 2 — sign in, feed renders with seeded community content', async () =>
 });
 
 test('UI 3 — every primary route renders without runtime errors', async () => {
-  const adminAuth = await fetch(`${baseUrl}/api/auth/demo`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ presetAccount: 'admin' })
-  }).then((r) => r.json());
-  const { window, document, errors, dom } = await bootApp(adminAuth.token);
+  const adminAuth = await firebaseTestAuth.signInAsSampleRider(baseUrl, 'admin');
+  assert.equal(adminAuth.status, 200, JSON.stringify(adminAuth.json));
+  const { window, document, errors, dom } = await bootApp(adminAuth.json.token);
   try {
     // The admin session token was injected in beforeParse; wait for the feed first
     await waitFor(() => document.querySelector('#feedList'), 15000, 'authenticated shell');
@@ -185,13 +178,10 @@ test('UI 3 — every primary route renders without runtime errors', async () => 
 test('UI 4 — onboarding wizard blocks under-16 and unlocks social features', async () => {
   const { window, document, errors, dom } = await bootApp();
   try {
-    const auth = await fetch(`${baseUrl}/api/auth/demo`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: 'ui.onboarding@example.com' })
-    }).then((r) => r.json());
-    assert.equal(auth.onboardingRequired, true);
-    window.localStorage.setItem('rr_token', auth.token);
+    const signup = await firebaseTestAuth.signUpFresh(baseUrl, { username: 'ui_test_rider', displayName: 'UI Test Rider' });
+    assert.equal(signup.status, 200, JSON.stringify(signup.json));
+    assert.equal(signup.json.onboardingRequired, true);
+    window.localStorage.setItem('rr_token', signup.json.token);
 
     window.location.hash = '#/onboarding';
     await waitFor(() => document.querySelector('.wizard-shell'), 12000, 'onboarding wizard');

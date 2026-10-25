@@ -11,7 +11,7 @@ older links and bookmarks land somewhere truthful.
 | `GOOGLE_CLIENT_ID` environment variable | No longer read. Safe to delete |
 | Server-side Google ID-token verifier (`googleapis.com/oauth2/v3/certs`) | Deleted from `backend/server.js` |
 | `/api/config` → `googleClientId`, `capabilities.googleSignIn` | Removed (`capabilities.emailPasswordSignIn` replaces it) |
-| `POST /api/auth/google` (OAuth bridge) | Demo bridge only. It rejects Google ID tokens with `410 GOOGLE_SIGNIN_REMOVED` |
+| `POST /api/auth/google` | Deleted. The route returns `404` |
 | Android SHA-1 / OAuth client registration | Not required |
 
 ## Why
@@ -31,13 +31,10 @@ Follow **[`FIREBASE_AUTH.md`](FIREBASE_AUTH.md)**. In short:
 3. Enable **Authentication → Sign-in method → Email/Password**.
 4. Set `FIREBASE_PROJECT_ID` and `FIREBASE_API_KEY` on the server and restart.
 
-Until then the email/password form renders **disabled** with an explanation, and the demo
-accounts remain available for evaluating the build (development only — refused in production
-unless `ALLOW_DEMO_SIGNIN=1`, and never able to grant an admin role).
+Until then the email/password form renders **disabled** with an explanation. There is no demo
+or sandbox sign-in to fall back on.
 
 ## If you have an older client
 
-An already-installed APK that still calls `POST /api/auth/google` keeps working for the four
-demo presets, because that path is retained as a deprecated alias of `POST /api/auth/demo`.
-It performs no Google request, and it returns `410 GOOGLE_SIGNIN_REMOVED` if a client sends a
-Google ID token. Rebuild the APK (`npm run apk`) to get the current sign-in screen.
+An older APK that still calls `POST /api/auth/google` receives `404` and must be rebuilt
+(`npm run apk`) to get the current sign-in screen.

@@ -6,7 +6,7 @@ script, the OAuth client and the server-side Google token verifier were all remo
 passwordless links, and no client-side-only "login". This document covers what was built, how
 it works, and the exact steps to connect your own Firebase project.
 
-> **State of this repository:** the code is complete (93 automated tests, 30 of them for
+> **State of this repository:** the code is complete (92 automated tests, 22 of them for
 > authentication) and **your Firebase project is configured**: `rideriselk`
 > (`FIREBASE_PROJECT_ID=rideriselk` in `.env`, git-ignored). The browser can now create real
 > accounts, and Google will deliver the verification and password-reset emails.
@@ -54,9 +54,9 @@ it works, and the exact steps to connect your own Firebase project.
 |---|---|
 | Firebase UID is the identity | Stored in `users_private.firebase_uid`; usernames, emails and roles in a request body are ignored. |
 | The verified token is the only source of `email_verified` | A client cannot unlock community features by lying about verification. |
-| The RideRise session token is still a server-signed HMAC JWT | The whole app (and the legacy demo accounts) keep working; the Firebase token is only exchanged at sign-in and on session restore. |
+| The RideRise session token is still a server-signed HMAC JWT | One token flavour for the whole app; the Firebase token is exchanged at sign-up/sign-in and on session restore, and never stored on the server. |
 | Role always comes from `users_private.role` | A Firebase account can never obtain `admin`/`moderator` from the client. Promotion happens in the Studio Console. |
-| No merging by email | An existing profile with the same address produces `ACCOUNT_LINK_REQUIRED`; linking is an explicit, authenticated action. |
+| No merging by email | An existing profile with the same address produces `ACCOUNT_LINK_REQUIRED`; there is no automatic merge and no profile-linking route. |
 | Passwords never touch the server | Firebase holds the credential. There is no password column and no password field in any log or table. |
 | Fail closed | Without `FIREBASE_PROJECT_ID` + `FIREBASE_API_KEY`, sign-up/login return `503 FIREBASE_NOT_CONFIGURED` and the UI shows a disabled form with an explanation. |
 
@@ -68,8 +68,9 @@ it works, and the exact steps to connect your own Firebase project.
 - `auth_events` — append-only audit trail: `signup`, `login`, `link`, `signout`, `blocked_unverified`, `failure` + reason, UID, IP
 - unique **case-insensitive** indexes on `users_private.email` and `profiles.username`
 
-Existing demo rows keep `firebase_uid = NULL` and continue to work through the legacy session
-token; they can be linked from **Settings → Sign-in & security**.
+Every account is created with its Firebase UID, so `firebase_uid` is the only identity a
+session can be minted for. Rows without one (such as the non-personal studio account) cannot
+sign in, and no endpoint can attach an identity to them.
 
 ### API surface
 
@@ -79,17 +80,14 @@ token; they can be linked from **Settings → Sign-in & security**.
 | `GET /api/auth/username-available?username=` | Live availability + suggestions | 60 / min / IP |
 | `POST /api/auth/firebase/signup` | Verify token → create profile → session (idempotent per UID) | 10 / h / IP |
 | `POST /api/auth/firebase/session` | Verify token → existing profile → session (never creates) | 20 / 5 min / IP, 30 / 5 min / UID |
-| `POST /api/auth/firebase/link` | Attach a verified UID to the signed-in profile | 10 / h / user |
 | `GET /api/auth/firebase/status` | Which provider/email this session uses | — |
 | `POST /api/auth/firebase/logout` | Audit the sign-out | — |
-| `POST /api/auth/demo` | Demo presets only (evaluation builds; refuses in production unless `ALLOW_DEMO_SIGNIN=1`) | — |
-| `POST /api/auth/google` | **Deprecated alias** of `/api/auth/demo`; returns `410 GOOGLE_SIGNIN_REMOVED` for any Google ID token | — |
+| `POST /api/auth/demo`, `POST /api/auth/google` | **Removed.** Both return `404`; no demo or Google session can be minted | — |
 
 Error codes the UI understands: `AUTH_TOKEN_INVALID`, `AUTH_TOKEN_EXPIRED`,
 `EMAIL_NOT_VERIFIED`, `ACCOUNT_SUSPENDED`, `ACCOUNT_DELETED`, `PROFILE_REQUIRED`,
-`USERNAME_TAKEN`, `ACCOUNT_LINK_REQUIRED`, `ALREADY_LINKED`, `FIREBASE_ACCOUNT_IN_USE`,
-`PROFILE_CREATE_FAILED` (retryable), `PROFILE_CONFLICT`, `RATE_LIMITED`,
-`FIREBASE_NOT_CONFIGURED`, `AUTH_UNAVAILABLE`, `DEMO_SIGNIN_DISABLED`.
+`USERNAME_TAKEN`, `ACCOUNT_LINK_REQUIRED`, `PROFILE_CREATE_FAILED` (retryable),
+`PROFILE_CONFLICT`, `RATE_LIMITED`, `FIREBASE_NOT_CONFIGURED`, `AUTH_UNAVAILABLE`.
 
 ---
 
@@ -277,9 +275,9 @@ report what you see and it can be adapted.
 
 ## 9. What is tested vs. what waits for your Firebase project
 
-### Tested automatically (`npm test`, 93 tests total)
+### Tested automatically (`npm test`, 92 tests total)
 
-`tests/auth.firebase.test.js` (23 tests, real verifier, locally-signed ID tokens):
+`tests/auth.firebase.test.js` (22 tests, real verifier, locally-signed ID tokens):
 
 - sign-up creates exactly one `users_private` + `profiles` row and a working session token
 - a request body cannot dictate role, email, UID or verification state
@@ -294,14 +292,14 @@ report what you see and it can be adapted.
 - sign-in restores the same profile (XP, rank, onboarding state) and never duplicates rows
 - sign-up retry is idempotent; a simulated database failure during profile creation returns
   `PROFILE_CREATE_FAILED` with nothing written, and the retry succeeds
-- an existing profile with the same email is never merged (`ACCOUNT_LINK_REQUIRED`)
-- linking requires an authenticated, verified action; already-linked and in-use accounts are
-  refused
+- an existing profile with the same email is never merged (`ACCOUNT_LINK_REQUIRED`) and there
+  is no route that could attach a Firebase identity to it
 - status/logout report honestly and sign-outs are audit-logged
 - admin/moderation endpoints deny a rider, allow after DB promotion, deny again after demotion
 - no password column, no tokens or password strings in `auth_events` or `users_private`
 - suspension applies to live sessions; deleted accounts return `410`
-- demo sign-in cannot mint an admin role or a Firebase-linked identity
+- `/api/auth/demo` and `/api/auth/google` return 404, and neither the server nor the shipped
+  web client contains a demo flag or demo session code
 - auth endpoints are rate limited per client address, and `X-Forwarded-For` cannot be spoofed
   to reset the limit from the internet
 
@@ -314,7 +312,8 @@ report what you see and it can be adapted.
 - sign-out clears both the RideRise token and the Firebase session
 - Settings → Sign-in & security shows the provider and requests a password reset
 
-Also updated: the smoke/flow suites still pass with the new sign-in screen (93/93).
+Also updated: the smoke/flow/API suites sign in through this same verifier, and the whole
+suite passes (92/92).
 
 ### Awaiting your Firebase project (cannot be tested here)
 
@@ -345,8 +344,7 @@ Anything in that table is **unverified until you run section 7**. Do not treat t
 | Welcome screen shows the “server cannot reach Google” banner | same cause, detected at startup | as above — this is not a credential problem |
 | `401 AUTH_TOKEN_EXPIRED` repeatedly | device clock far off, or a very old cached token | fix device clock; the SDK refreshes automatically |
 | `409 PROFILE_REQUIRED` loop | profile creation was interrupted | complete the username form (it retries the same Firebase UID) |
-| `409 ACCOUNT_LINK_REQUIRED` | a RideRise profile already uses that email | sign in to that profile, then Settings → Sign-in & security → Link |
-| `403 DEMO_SIGNIN_DISABLED` on a demo account | production without `ALLOW_DEMO_SIGNIN=1` | expected; use a real account |
+| `409 ACCOUNT_LINK_REQUIRED` | a RideRise profile already uses that email | use a different address; accounts are never merged automatically |
 | Everything works but riders are always “unverified” | clicking the gate before opening the email link | open the link first; the gate re-checks with `reload()` |
 
 ---

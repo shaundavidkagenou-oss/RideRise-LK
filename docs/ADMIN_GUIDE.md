@@ -164,7 +164,7 @@ Notice. To publish a reviewed version:
 ```sql
 UPDATE legal_documents
 SET content_markdown = :reviewedText, version = '1.1', updated_at = :now,
-    updated_by_admin_id = 'usr_admin_nethmi'
+    updated_by_admin_id = 'usr_studio'   -- the studio account that owns official content
 WHERE slug = 'terms_of_service';
 ```
 

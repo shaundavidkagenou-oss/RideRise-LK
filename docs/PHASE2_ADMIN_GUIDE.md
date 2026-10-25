@@ -9,16 +9,15 @@ events, the tutorial CMS, catalogue verification, broadcast and the audit trail.
 
 1. Open the app → **Admin** (visible only to accounts with the `admin` or `moderator` role),
    or go directly to `#/admin`.
-2. You can sign in two ways:
-   - **Studio credential** — `admin$123$` / `admin$123$` on a fresh development database. It
-     signs in as the seeded studio profile `nethmi_sds` and needs no password change, so the
-     credential in the brief works exactly as written. Production (`NODE_ENV=production`)
-     refuses this default: set `ADMIN_USERNAME`/`ADMIN_PASSWORD`, or use the random password
-     printed once in the server log and change it at first sign-in.
-   - **Rider account** — sign in with the studio email/password account whose `users_private.role` is
-     `admin` or `moderator`.
-3. **Studio Console → 🔑 Password** before inviting real riders. The demo
-   credential is published in the project brief, so anyone who can reach the server knows it.
+2. Sign in with the **studio credential**. On the first boot of an empty database the server
+   uses `ADMIN_USERNAME`/`ADMIN_PASSWORD` (12+ characters) if you set them, otherwise it
+   generates a strong password, prints it **once** in the server log and forces a change at
+   first sign-in. No default password is shipped.
+   The credential is linked to the first `admin`/`moderator` profile in `users_private`; if
+   that profile is removed, the next boot re-links it automatically.
+3. **Studio Console → 🔑 Password** and store it in a password manager before inviting real
+   riders. A Firebase rider account cannot reach this console: its role comes from the
+   database and a regular account is always `rider`.
 
 Password rules: minimum 12 characters, not the bootstrap value, stored in the studio
 password manager. Five failed attempts lock the account for 15 minutes; every attempt is

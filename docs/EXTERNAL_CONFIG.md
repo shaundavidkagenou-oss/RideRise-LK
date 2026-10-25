@@ -20,8 +20,8 @@ pieces your current environment already has.
 
 | Integration | Accounts / credentials | Typical cost | What it unlocks | What happens without it |
 |---|---|---|---|---|
-| Core app | none | none | Everything local, demo data, all moderation | — |
-| **Firebase email/password auth** | Firebase project + web app config; Email/Password provider enabled | free | Real rider accounts, verification email, password reset, persistent sessions | Sign-in form renders **disabled** with an explanation; only the demo presets work |
+| Core app | none | none | Everything local, all moderation, real postings and messaging between real accounts | — |
+| **Firebase email/password auth** | Firebase project + web app config; Email/Password provider enabled | free | Real rider accounts, verification email, password reset, persistent sessions | Sign-in form renders **disabled** with an explanation — no demo bypass exists |
 | Map tiles | OSM (no key) or MapTiler/Mapbox/Thunderforest key | OSM free under usage policy; commercial hosts have free tiers then paid **verify** | Street basemap under guild live markers | Markers still render on a blank grid; map shows an offline/tile-error state |
 | Voice / walkie-talkie relay | TURN service (Twilio NTS, Metered, Cloudflare) or self-hosted coturn | free tier then per-GB **verify** | Calls between devices on mobile networks/NAT | STUN-only: works on some Wi-Fi pairs, fails on many carrier networks |
 | Push notifications | Firebase project + service-account JSON | FCM is free | Server-side delivery to registered devices | **Configured here** (`secrets/`, `push:true`); in-app realtime remains the fallback |
@@ -89,8 +89,7 @@ Google sign-in and Google OAuth were **removed** from RideRise LK. There is noth
 configure: no OAuth client, no consent screen, no SHA-1 registration, no redirect URI. The
 server does not read `GOOGLE_CLIENT_ID`, and the client never loads Google's sign-in script.
 
-Riders authenticate with Firebase email/password (§1b). The demo accounts in the setup guide
-exist only to explore a build that has no Firebase project yet.
+Riders authenticate with Firebase email/password (§1b). There is no alternative sign-in path.
 
 ---
 
@@ -264,10 +263,10 @@ curl -s localhost:3000/api/map/config | python3 -m json.tool     # provider, con
 curl -s localhost:3000/api/voice/ice | python3 -m json.tool      # iceServers or configured:false
 ```
 
-Then sign in as the studio admin (`admin$123$` on a fresh database; production requires
-`ADMIN_USERNAME`/`ADMIN_PASSWORD` alongside `JWT_SECRET`), open **Studio Console → 🔑 Password**
-and change the password before inviting real users. `npm run probe:admin` (against a
-throwaway database) re-checks the credential's moderation and rider abilities.
+Then sign in to the studio console with the credential printed once in the server log (or the
+`ADMIN_USERNAME`/`ADMIN_PASSWORD` you supplied), open **Studio Console → 🔑 Password** and keep
+it in a password manager. `npm run probe:admin` (against a throwaway database) re-checks the
+credential's moderation and rider abilities.
 
 ---
 

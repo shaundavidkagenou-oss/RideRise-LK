@@ -17,7 +17,7 @@ Lankan BMX and freestyle riders, built for **Shaun David Studios**.
 | **Languages** | English · සිංහල · தமிழ் (localisation architecture in place) |
 | **APKs** | `release/apk/riderise-lk-phase2-debug.apk`, `…-release.apk` (signed) |
 | **Android Studio project** | `android/` — Gradle 8.9, AGP 8.7.3, Firebase Cloud Messaging (BoM 35.1.0), `google-services.json` git-ignored |
-| **Tests** | 93 automated tests (30 Firebase-auth + 7 Android/FCM wiring + 5 FCM credentials) + 106 Phase 2 API assertions + 36 admin capability checks — all passing |
+| **Tests** | 92 automated tests (22 Firebase-auth + 7 Android/FCM wiring + 5 FCM credentials) + 106 Phase 2 API assertions + admin capability checks — all passing |
 
 ---
 
@@ -29,8 +29,8 @@ Everything from Phase 1 remains, including the existing database and users.
 > with a username, email and password, confirm the verification email, and only then reach the
 > community features. Sessions survive browser and app restarts; password resets are handled by
 > Firebase. Setup: [`docs/FIREBASE_AUTH.md`](docs/FIREBASE_AUTH.md). Until you connect your own
-> Firebase project the sign-in form is disabled and says so — the demo accounts remain only for
-> evaluating the build.
+> Firebase project the sign-in form is disabled and says so. There is no demo or sandbox
+> sign-in: every session comes from a verified Firebase ID token.
 
 - **Live guild map** — consent-first, off by default, approximate by default, 1.5 km fixed
   radius for riders aged 16–17, short-lived precise option for adults (60 m, ≤10 min),
@@ -77,7 +77,7 @@ Everything from Phase 1 remains, including the existing database and users.
 
 ```bash
 npm start                                  # http://localhost:3000  (SQLite created, migrated, seeded)
-npm test                                   # 93 automated tests (serial)
+npm test                                   # 92 automated tests (serial)
 npm run apk                                # rebuild signed debug + release APKs (no SDK required)
 npm run check:android-push                 # 37 static checks of the Gradle/FCM wiring
 npm run check:fcm                          # FCM service-account validity (+ --online to call Google)
@@ -98,30 +98,31 @@ fully functional and reports `push: false`, `turnRelay: false` honestly in `/api
 > has **no** Play Services, Gradle has **not** been run in this environment, and no device token
 > exists yet — see [`android/firebase/README.md`](android/firebase/README.md).
 
-### Demo rider accounts (local demo bridge — no Google account needed)
+### Studio administrator
 
-| Account | Role | Why it matters |
-|---|---|---|
-| `kasun.perera.demo@gmail.com` | Rider (Stunt Specialist) | Full profile, guild owner |
-| `roshan.fernando.demo@gmail.com` | Rider + guild moderator | Moderation role |
-| `dilshan.student.demo@gmail.com` | **16–17 years old** | Youth defaults, location locks |
-| `nethmi.admin@shaundavidstudios.lk` | **Studio administrator** | Full console |
+The console has its own credential, separate from rider accounts. On the first boot of an empty
+database the server either uses `ADMIN_USERNAME` / `ADMIN_PASSWORD` (12+ characters) or generates
+a strong password, prints it **once** to the server log and forces a change at first sign-in.
 
-### Administrator credential
-
-The brief requires a working studio administrator account:
-
-- **username:** `admin$123$`
-- **password:** `admin$123$`
+No default password is shipped. The credential is linked to the studio administrator profile;
+if that profile is ever removed the next boot re-links the credential automatically, so the
+console cannot be locked out by deleting a user.
 
 It can monitor and ban accounts, delete messages, receive all reports and feedback, publish
-news and official events, and do everything an ordinary rider can do (the credential signs
-in as the seeded studio administrator profile `nethmi_sds`).
+news and official events, and do everything an ordinary rider can do. Change the password at any
+time in **Studio Console → 🔑 Password**.
 
-This is a **development** credential and works exactly as written on a fresh database. It is
-refused when `NODE_ENV=production`: set `ADMIN_USERNAME`/`ADMIN_PASSWORD` there, or use the
-random password printed once in the server log and change it at first sign-in. You can change
-it at any time in **Studio Console → 🔑 Password**; change it before any real deployment.
+### Sample content for local development
+
+A fresh database contains product content only: 7 ranks, 6 achievements, the 21-module stunt
+library plus its 4-module maintenance track, the draft legal documents and one non-personal
+studio account.
+Riders, posts, guilds, events and catalog prices are created by real accounts in the app.
+
+Set `SEED_DEMO=1` before the first boot of a throwaway database (`npm run start:sample`) to add
+four sample riders and sample community content for UI work. They have no sign-in credential —
+their Firebase UIDs are local placeholders that no Firebase project can issue — so they cannot
+be signed into. Production ignores the flag entirely.
 
 ---
 

@@ -103,12 +103,11 @@ const phase2 = require('./phase2').createRouter({
 });
 
 // ---------------------------------------------------------------------------
-// Sign-in paths
+// Sign-in path
 //
-// Google Sign-In / Google OAuth was REMOVED. Riders authenticate with Firebase
-// email + password only (below). The demo bridge further down exists purely so the
-// bundled demo accounts can be explored without a Firebase project; it is not an
-// identity provider and never talks to Google.
+// There is exactly one: Firebase email + password. Google Sign-In was removed, and
+// there is no demo/sandbox bridge — a session can only be minted for an identity
+// whose Firebase ID token passed signature, issuer, audience and expiry checks.
 // ---------------------------------------------------------------------------
 // ---------------------------------------------------------------------------
 // Firebase Authentication (email + password). The verifier proves Firebase ID
@@ -156,11 +155,7 @@ if (firebaseAuth.projectId) {
   refreshVerifierState(true).catch(() => {});
 }
 
-// Demo/sandbox sign-in remains available for the bundled demo accounts, but it is refused in
-// production unless an operator explicitly opts in with ALLOW_DEMO_SIGNIN=1.
-const ALLOW_DEMO_SIGNIN =
-  process.env.ALLOW_DEMO_SIGNIN === '1' ||
-  (process.env.NODE_ENV !== 'production' && process.env.ALLOW_DEMO_SIGNIN !== '0');
+// No demo or sandbox session exists: every token comes from a verified Firebase ID token.
 
 // In-memory sliding window rate limiter
 const rateBuckets = new Map();
@@ -829,7 +824,7 @@ const server = http.createServer(async (req, res) => {
           walkieTalkie: true,
           firebaseAuth: firebaseAuth.configured,
           firebaseVerifier: firebaseVerifierState.status,
-          demoSignIn: ALLOW_DEMO_SIGNIN,
+          emailPasswordSignIn: firebaseAuth.configured,
           push: pushSender.status().configured,
           turnRelay: Boolean(process.env.TURN_URLS || process.env.TURN_URL)
         },
@@ -845,12 +840,11 @@ const server = http.createServer(async (req, res) => {
         ranks,
         legalDocuments: legalDocs,
         draftSafetyNotice: DRAFT_SAFETY_NOTICE_VERBATIM,
-        // Firebase web config (public identifiers) + demo-signin availability. No secrets.
+        // Firebase web config (public identifiers only). No secrets.
         // `verifier` carries the cached reachability of Google's certificate endpoint so the
         // welcome screen can explain a blocked server-side egress route instead of failing
         // later as if the password were wrong.
         firebase: { ...firebaseAuth.webConfig(), verifier: firebaseVerifierState },
-        demoSignInEnabled: ALLOW_DEMO_SIGNIN,
         capabilities: {
           emailPasswordSignIn: firebaseAuth.configured,
           push: pushSender.status().configured,
@@ -1028,55 +1022,6 @@ const server = http.createServer(async (req, res) => {
       return respondWithFirebaseSession(res, { userRow, identity, ip, event: 'firebase_signup_session', newAccount: true });
     }
 
-    if (pathname === '/api/auth/firebase/link' && req.method === 'POST') {
-      const user = getAuthUser(req);
-      if (!user) return sendJson(res, 401, { error: 'UNAUTHENTICATED' });
-      if (!checkRateLimit(`fblink:${user.id}`, 10, 3600)) {
-        return sendJson(res, 429, { error: 'RATE_LIMITED', message: 'Too many linking attempts. Try again later.' });
-      }
-      const body = await readJsonBody(req);
-      let identity;
-      try {
-        identity = await verifyFirebaseToken(body.idToken);
-      } catch (err) {
-        return sendFirebaseAuthError(res, err);
-      }
-      if (!identity.emailVerified) {
-        return sendJson(res, 403, {
-          error: 'EMAIL_NOT_VERIFIED',
-          message: 'Verify your email address first, then link it to this profile.'
-        });
-      }
-      const owner = db.prepare('SELECT username FROM profiles WHERE user_id = ?').get(user.id);
-      if (user.firebase_uid && user.firebase_uid !== identity.uid) {
-        return sendJson(res, 409, {
-          error: 'ALREADY_LINKED',
-          message: 'This profile is already linked to a different Firebase account.'
-        });
-      }
-      const claimed = db.prepare('SELECT id FROM users_private WHERE firebase_uid = ? AND id != ?').get(identity.uid, user.id);
-      if (claimed) {
-        return sendJson(res, 409, { error: 'FIREBASE_ACCOUNT_IN_USE', message: 'That Firebase account is already linked to another rider.' });
-      }
-      db.prepare(
-        "UPDATE users_private SET firebase_uid = ?, auth_provider = 'firebase', email_verified_at = COALESCE(email_verified_at, ?), updated_at = ? WHERE id = ?"
-      ).run(identity.uid, new Date().toISOString(), new Date().toISOString(), user.id);
-      recordAuthEvent(db, {
-        userId: user.id,
-        firebaseUid: identity.uid,
-        event: 'firebase_link',
-        outcome: 'success',
-        detail: 'existing profile linked to Firebase',
-        ip: clientIp(req)
-      });
-      return sendJson(res, 200, {
-        linked: true,
-        email: identity.email,
-        username: owner ? owner.username : null,
-        message: 'This Riderise LK profile is now linked to your Firebase account. You can sign in with your email and password from now on.'
-      });
-    }
-
     if (pathname === '/api/auth/firebase/status' && req.method === 'GET') {
       const user = getAuthUser(req);
       if (!user) return sendJson(res, 401, { error: 'UNAUTHENTICATED' });
@@ -1088,7 +1033,7 @@ const server = http.createServer(async (req, res) => {
         email_verified: Boolean(user.email_verified_at),
         message: user.firebase_uid
           ? 'This profile signs in with Firebase email/password.'
-          : 'This profile still uses the legacy demo session. Link a Firebase account to keep your data when you switch.'
+          : 'This profile has no sign-in account. Only accounts created with Firebase email/password can sign in.'
       });
     }
 
@@ -1097,136 +1042,6 @@ const server = http.createServer(async (req, res) => {
       recordAuthEvent(db, { userId: user ? user.id : null, event: 'signout', outcome: 'success', ip: clientIp(req) });
       return sendJson(res, 200, {
         message: 'Signed out. Session tokens are held by the client and were discarded; the Firebase SDK session was cleared too.'
-      });
-    }
-
-    // =========================================================================
-    // DEMO SIGN-IN (evaluation only — NOT an identity provider)
-    //
-    // Google Sign-In was removed. This bridge signs in the four seeded demo riders so the
-    // app can be explored before Firebase is configured. It refuses to run in production
-    // unless an operator sets ALLOW_DEMO_SIGNIN=1, and it can never grant a role that the
-    // database does not already contain.
-    //
-    // `POST /api/auth/google` is kept as a deprecated alias so an already-installed APK
-    // keeps working; it performs no Google request of any kind.
-    // =========================================================================
-    if ((pathname === '/api/auth/demo' || pathname === '/api/auth/google') && req.method === 'POST') {
-      if (!ALLOW_DEMO_SIGNIN) {
-        return sendJson(res, 403, {
-          error: 'DEMO_SIGNIN_DISABLED',
-          message:
-            'Demo sign-in is disabled on this deployment. Sign in with your email address and password (Firebase Authentication).'
-        });
-      }
-      const body = await readJsonBody(req);
-
-      // An ID token has no meaning here any more: Google sign-in was removed. Reject it
-      // loudly rather than silently ignoring a credential the client thinks it sent.
-      if (body.idToken) {
-        return sendJson(res, 410, {
-          error: 'GOOGLE_SIGNIN_REMOVED',
-          message:
-            'Google Sign-In has been removed from RideRise LK. Create an account with your email address and password, or open the demo accounts from the welcome screen.'
-        });
-      }
-
-      // Never accept a password on the demo bridge: real passwords belong to Firebase.
-      if (body.password) {
-        return sendJson(res, 400, {
-          error: 'PASSWORD_NOT_ALLOWED',
-          message: 'RideRise LK never accepts passwords outside Firebase Authentication. Sign in with your email and password on the sign-in form.'
-        });
-      }
-
-      const presetMap = {
-        kasun: 'usr_kasun',
-        admin: 'usr_admin_nethmi',
-        roshan: 'usr_roshan',
-        dilshan_minor: 'usr_dilshan_minor'
-      };
-
-      let userRow = null;
-      if (body.presetAccount && presetMap[body.presetAccount]) {
-        userRow = db.prepare('SELECT * FROM users_private WHERE id = ?').get(presetMap[body.presetAccount]);
-      }
-
-      // Development escape hatch: create a throwaway rider from an email address. Only when
-      // an operator has explicitly enabled demo sign-in, never in production, and always
-      // without a password or a Google identity.
-      if (!userRow && body.email) {
-        if (process.env.NODE_ENV === 'production' || process.env.ALLOW_DEMO_SIGNIN !== '1') {
-          return sendJson(res, 400, {
-            error: 'DEMO_PRESET_REQUIRED',
-            message:
-              'Only the four bundled demo accounts can be used for demo sign-in. Real accounts are created with email and password (Firebase Authentication).'
-          });
-        }
-        const cleanEmail = String(body.email).trim().toLowerCase();
-        if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(cleanEmail)) {
-          return sendJson(res, 400, { error: 'INVALID_EMAIL', message: 'Enter a valid email address.' });
-        }
-        userRow = db.prepare('SELECT * FROM users_private WHERE email = ?').get(cleanEmail);
-        if (!userRow) {
-          const newId = 'usr_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
-          const demoSub = 'demo_sub_' + crypto.createHash('sha256').update(cleanEmail).digest('hex').slice(0, 16);
-          db.prepare(
-            `INSERT INTO users_private (
-              id, google_sub, email, auth_provider, is_minor, age_confirmed, onboarding_completed, role, account_status, created_at, updated_at
-            ) VALUES (?, ?, ?, 'demo', 0, 0, 0, 'rider', 'active', ?, ?)`
-          ).run(newId, demoSub, cleanEmail, new Date().toISOString(), new Date().toISOString());
-          userRow = db.prepare('SELECT * FROM users_private WHERE id = ?').get(newId);
-        }
-      }
-
-      if (!userRow) {
-        return sendJson(res, 400, {
-          error: 'DEMO_PRESET_REQUIRED',
-          message: 'Choose one of the bundled demo accounts, or sign in with your email address and password.'
-        });
-      }
-
-      if (userRow.account_status === 'suspended') {
-        const expired = userRow.suspension_until && new Date(userRow.suspension_until).getTime() <= Date.now();
-        if (expired) {
-          db.prepare("UPDATE users_private SET account_status = 'active', suspension_reason = NULL, suspension_until = NULL WHERE id = ?").run(userRow.id);
-          userRow = db.prepare('SELECT * FROM users_private WHERE id = ?').get(userRow.id);
-        } else {
-          const until = userRow.suspension_until ? ` Suspension ends ${new Date(userRow.suspension_until).toUTCString()}.` : '';
-          return sendJson(res, 403, {
-            error: 'ACCOUNT_SUSPENDED',
-            message: `This account is currently suspended for violating Community Guidelines: ${userRow.suspension_reason || 'Contact safety@shaundavidstudios.lk for review.'}${until}`
-          });
-        }
-      }
-
-      const token = signToken({ userId: userRow.id, role: userRow.role });
-      const profile = userRow.onboarding_completed ? formatPublicProfile(userRow.id, userRow.id) : null;
-
-      recordAuthEvent(db, {
-        userId: userRow.id,
-        event: 'demo_signin',
-        outcome: 'success',
-        detail: 'demo bridge',
-        ip: clientIp(req)
-      });
-
-      return sendJson(res, 200, {
-        token,
-        authProvider: 'demo',
-        deprecated: pathname === '/api/auth/google' ? 'Use /api/auth/demo. Google Sign-In was removed.' : undefined,
-        onboardingRequired: !userRow.onboarding_completed,
-        account: {
-          id: userRow.id,
-          email: userRow.email, // Only sent to the authenticated owner's private session
-          role: userRow.role,
-          auth_provider: userRow.auth_provider || 'demo',
-          is_minor: Boolean(userRow.is_minor),
-          age_confirmed: Boolean(userRow.age_confirmed),
-          onboarding_completed: Boolean(userRow.onboarding_completed),
-          terms_accepted_version: userRow.terms_accepted_version
-        },
-        profile
       });
     }
 

@@ -9,6 +9,8 @@ process.env.JWT_SECRET = 'ui-auth-test-secret-do-not-use-in-production';
 process.env.FIREBASE_PROJECT_ID = 'riderise-lk-test';
 process.env.FIREBASE_API_KEY = 'test-api-key-not-a-real-credential';
 process.env.FIREBASE_APP_ID = '1:000000000000:web:testfixture';
+// Opt-in fixture content: a taken username to collide with, and public posts for the feed.
+process.env.SEED_DEMO = '1';
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -274,7 +276,7 @@ test('UI AUTH 2 — a taken username is caught before any Firebase account is cr
     click(window, document.querySelector('[data-auth-tab="signup"]'));
     await waitFor(() => document.getElementById('signUpForm'), 5000, 'sign-up form');
 
-    document.getElementById('suUsername').value = 'kasun_bmx_lk'; // seeded demo rider
+    document.getElementById('suUsername').value = 'kasun_bmx_lk'; // already used by a sample rider
     document.getElementById('suEmail').value = 'kasun.duplicate@example.test';
     document.getElementById('suPassword').value = 'RideRise2026!';
     document.getElementById('suConfirm').value = 'RideRise2026!';

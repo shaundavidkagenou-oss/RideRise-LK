@@ -3,13 +3,6 @@
   'use strict';
   const { api, state, t, escapeHtml, toast, modal, closeModal, logo, skeletonList } = window.RR;
 
-  const DEMO_IDENTITIES = [
-    { key: 'kasun', email: 'kasun.perera.demo@gmail.com', name: 'Kasun Perera', note: 'Rider demo · Stunt Specialist' },
-    { key: 'roshan', email: 'roshan.fernando.demo@gmail.com', name: 'Roshan Fernando', note: 'Rider demo · Guild moderator' },
-    { key: 'dilshan_minor', email: 'dilshan.student.demo@gmail.com', name: 'Dilshan S.', note: '16–17 demo · minor safeguards on' },
-    { key: 'admin', email: 'nethmi.admin@shaundavidstudios.lk', name: 'Nethmi Jayawardena', note: 'Studio admin · moderation tools' }
-  ];
-
   let authMode = 'signin'; // 'signin' | 'signup' | 'complete-profile'
   let pendingSignup = null; // { username, displayName } kept only in memory for safe retries
   let availabilityTimer = null;
@@ -47,7 +40,6 @@
       return;
     }
 
-    const demoEnabled = Boolean(state.config && state.config.demoSignInEnabled);
     // The Firebase SDK runs in this browser, but the SERVER must reach Google to verify the
     // resulting ID token. A blocked egress route is a server problem, so say so up front
     // instead of letting it look like a wrong password.
@@ -83,14 +75,6 @@
             </div>
             <div id="authFormHost" class="auth-form-host"></div>
             <p class="auth-status" id="authStatus" role="status" aria-live="polite"></p>
-            ${
-              demoEnabled
-                ? `<div class="auth-demo-row">
-                     <span>Evaluating the build?</span>
-                     <button type="button" class="link-inline" id="demoSignInBtn">Use a demo account</button>
-                   </div>`
-                : ''
-            }
             <p class="auth-fineprint">
               Email and password accounts are secured by <strong>Firebase Authentication</strong>.
               RideRise LK never stores or logs your password. You must be <strong>at least 16 years old</strong>.
@@ -148,9 +132,6 @@
         mountAuthForm(viewport);
       })
     );
-    const demoBtn = viewport.querySelector('#demoSignInBtn');
-    if (demoBtn) demoBtn.addEventListener('click', openDemoSignIn);
-
     paintAuthTabs(viewport);
     mountAuthForm(viewport);
   }
@@ -720,59 +701,6 @@
     });
   }
 
-  /* --------------------------------- demo sign-in --------------------------- */
-
-  function openDemoSignIn() {
-    modal({
-      title: 'Demo sign-in (development)',
-      size: '560px',
-      body: `
-        <div class="oauth-sheet">
-          <p class="oauth-sub">These seeded accounts exist only for evaluating the build. They use a
-            local demo bridge, <strong>not</strong> Firebase Authentication, and the server refuses them in
-            production. Google Sign-In has been removed — real accounts use email and password.</p>
-          <div class="oauth-accounts">
-            ${DEMO_IDENTITIES.map(
-              (id) => `<button type="button" class="oauth-account" data-email="${escapeHtml(id.email)}" data-preset="${id.key}">
-                <span class="oauth-avatar">${escapeHtml(id.name.slice(0, 1))}</span>
-                <span class="oauth-account-text">
-                  <strong>${escapeHtml(id.name)}</strong>
-                  <small>${escapeHtml(id.email)}</small>
-                  <em>${escapeHtml(id.note)}</em>
-                </span>
-              </button>`
-            ).join('')}
-          </div>
-          <p class="oauth-note">Real accounts use <strong>Firebase email and password</strong> — create one from the main form.</p>
-        </div>`,
-      onMount(root) {
-        root.querySelectorAll('[data-preset]').forEach((btn) =>
-          btn.addEventListener('click', () => completeDemoSignIn({ email: btn.dataset.email, presetAccount: btn.dataset.preset }))
-        );
-      }
-    });
-  }
-
-  async function completeDemoSignIn(payload) {
-    document.querySelectorAll('#modalRoot button').forEach((b) => (b.disabled = true));
-    try {
-      const data = await api('/api/auth/demo', { method: 'POST', body: payload });
-      closeModal();
-      await finishSession(data);
-    } catch (err) {
-      closeModal();
-      modal({
-        title: 'Demo sign-in unavailable',
-        size: '480px',
-        body: `<p>${escapeHtml(err.message)}</p>`,
-        footer: '<button class="btn btn-secondary" data-modal-close="1">Close</button>',
-        onMount(root) {
-          root.querySelector('[data-modal-close]').addEventListener('click', closeModal);
-        }
-      });
-    }
-  }
-
   /* ---------------------------------- entry points -------------------------- */
 
   function openSignIn() {
@@ -1164,7 +1092,6 @@
     openSignIn,
     openSignUp,
     openForgotPassword,
-    openDemoSignIn,
     openLegalDocument,
     markdownToHtml,
     computeAge

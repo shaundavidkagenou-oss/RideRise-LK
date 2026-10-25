@@ -113,7 +113,7 @@ The web layer always makes this call — the native code never holds a session c
 ```bash
 npm run check:android-push     # 37 static checks: Gradle, manifest, Java, web, server, secrets
 npm run check:fcm              # service-account validity + project match (add --online to call Google)
-npm test                       # 93 tests, including 7 Android-push + 5 FCM credential tests
+npm test                       # 92 tests, including 7 Android-push + 5 FCM credential tests
 ```
 
 | Symptom | Meaning |

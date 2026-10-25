@@ -60,11 +60,13 @@ APK small (2.3 MB) and the source auditable.
   - `recalculateUserRank()`.
 - `schema.sql` — 28 tables with foreign keys, `CHECK` constraints on enums and indexes that
   match the actual queries (feed, leaderboards, messages, catalog, events, reports).
-- `seed.js` — deterministic, substantive seed content: 7 ranks, 6 achievements, 4 demo
-  riders (incl. a 16–17 account), 3 bikes (one deliberately defective to demonstrate the
-  safety cap), 3 guilds, 4 posts + comments, friendships + conversation, **21 stunt
-  modules**, **9 catalog categories** with honest verification labels, 4 events (3 official
-  + 1 community), and the legal documents including the verbatim draft safety notice.
+- `seed.js` — always seeds product content: 7 ranks, 6 achievements, the **21 stunt
+  modules**, the learning pathways, the draft legal documents (including the verbatim draft
+  safety notice) and one non-personal studio account. With `SEED_DEMO=1` (development only,
+  never production) it also adds 4 sample riders (incl. a 16–17 account), 3 bikes (one
+  deliberately defective to demonstrate the safety cap), 3 guilds, 4 posts + comments,
+  friendships, a conversation, **9 catalog categories**, 4 events and a moderation queue.
+  Those sample rows carry local placeholder Firebase UIDs, so nothing can sign in as them.
 
 Security model summary (full detail in `DATABASE_SCHEMA.md` §5):
 

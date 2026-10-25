@@ -1,10 +1,10 @@
 # RideRise LK — APK build provenance
 
-Rebuilt on **2026-10-25 09:20 UTC** after adding the Android push (FCM) build: a complete
-Gradle project under `android/` (AGP 8.7.3, Google services plugin 4.5.0, Firebase BoM
-35.1.0, `firebase-messaging`), the native token bridge, notification service, channel and
-deep-link routing, plus `scripts/verify_android_push.js`. The bundled `assets/webapp/` was
-refreshed from the current source so the shell and the web build match. Built with
+Rebuilt on **2026-10-25 09:56 UTC** after removing the demo phase: the demo sign-in bridge and
+its UI are gone, sign-in is Firebase email/password only, and the bundled `assets/webapp/` was
+refreshed from the current source so the shell and the web build match. (The Android push
+build — Gradle project, native token bridge, notification service, channel and deep-link
+routing — landed in the previous rebuild and is unchanged.) Built with
 `scripts/build_apk.sh all` (no Android SDK or Gradle; the toolchain provisions a Java runtime,
 aapt2, d8, ecj and apksigner). Verified with `apksigner verify` and `aapt2 dump badging /
 permissions`. **The APK has not been installed or launched** — this environment has no device
@@ -18,8 +18,8 @@ and no emulator.
 
 | File | Size | SHA-256 |
 |---|---|---|
-| `apk/riderise-lk-phase2-debug.apk` | 2,440,529 B | `709a3719fdc309e3a120d2ad3f255997ae7ecd55cd156808d74fe6c2a89649a4` |
-| `apk/riderise-lk-phase2-release.apk` | 2,444,624 B | `32fce39f31d2cc413f3b81eecc19e9878d6aab5dc62ea88ba09af3f898856412` |
+| `apk/riderise-lk-phase2-debug.apk` | 2,440,529 B | `b092b1aa44282f76ff51a3945e8783f7e08f867e8415151fe8f969fad77f1aaa` |
+| `apk/riderise-lk-phase2-release.apk` | 2,444,624 B | `5f7eb7b5a8555a3bdf6466e99ab97339184923e72dbe57c58268d2d759267bb2` |
 
 Both are listed in `apk/SHA256SUMS.txt`; verify with `cd release/apk && sha256sum -c
 SHA256SUMS.txt`. The `.idsig` files are v4 signature sidecars.

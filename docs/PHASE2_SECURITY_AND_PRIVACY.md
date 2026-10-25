@@ -9,10 +9,10 @@ engineering review, not a certification. No external penetration test has been p
 
 | Control | Implementation |
 |---|---|
-| Rider sign-in | Firebase email/password: ID token verified server-side (RS256 + Google's secure-token x509 certificates, `iss`/`aud`/`exp`/`sub`) — `docs/FIREBASE_AUTH.md`. Demo presets only when `NODE_ENV !== 'production'` and never with an admin role from the request |
+| Rider sign-in | Firebase email/password only: ID token verified server-side (RS256 + Google's secure-token x509 certificates, `iss`/`aud`/`exp`/`sub`) — `docs/FIREBASE_AUTH.md`. There is no demo or sandbox session, and the request body can never set a role |
 | Session token | HS256 JWT, 7-day expiry, signed with `JWT_SECRET`; tampering is rejected. No fallback key ships in the repo — production refuses to start without a 32+ char secret, and development uses a random per-process key |
 | Administrator sign-in | Separate `admin_accounts` table, scrypt password hashes with per-account salt, 5-attempt/15-minute lockout, timing-safe comparison |
-| Password rotation | `must_change_password` blocks every write action until changed; set for a production-generated password. The documented `admin$123$` demo credential is refused in production |
+| Password rotation | `must_change_password` blocks every write action until changed; set whenever the server generates the bootstrap password. No default password is shipped, and short `ADMIN_PASSWORD` values abort the boot |
 | Suspension | Checked on **every** authenticated request, not just at sign-in; suspended tokens return 401/403 and `/api/auth/session` answers `ACCOUNT_SUSPENDED` |
 | Realtime | Short-lived single-use ticket (60 s) exchanged for the SSE stream; the bearer token is never placed in a URL |
 

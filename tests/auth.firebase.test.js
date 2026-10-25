@@ -151,7 +151,7 @@ test('FB 1 — the public Firebase web config is exposed without server secrets'
 
   const config = await call('/api/config');
   assert.equal(config.json.firebase.configured, true);
-  assert.equal(config.json.demoSignInEnabled, true);
+  assert.equal('demoSignInEnabled' in config.json, false, 'no demo switch is published any more');
   assert.equal(config.json.firebase.message, 'Firebase Authentication is configured.');
   assert.equal(JSON.stringify(config.json).includes('BEGIN PRIVATE KEY'), false);
   assert.equal(JSON.stringify(config.json).includes('JWT_SECRET'), false);
@@ -165,9 +165,9 @@ test('FB 2 — every Firebase endpoint fails closed without an ID token', async 
   const signup = await call('/api/auth/firebase/signup', { method: 'POST', body: { username: 'nobody' } });
   assert.equal(signup.status, 401);
 
+  // There is no profile-linking route: every account is created with its Firebase identity.
   const link = await call('/api/auth/firebase/link', { method: 'POST', body: {} });
-  assert.equal(link.status, 401);
-  assert.equal(link.json.error, 'UNAUTHENTICATED');
+  assert.equal(link.status, 404);
 
   const status = await call('/api/auth/firebase/status');
   assert.equal(status.status, 401);
@@ -461,11 +461,14 @@ test('FB 12 — a failure while creating the profile is retryable and never dupl
   assert.equal(profileCountForUid(id.uid), 1);
 });
 
-/* ---------------------------------------------------------- account linking ---- */
+/* ---------------------------------------------------------- account identity ---- */
 
 test('FB 13 — an existing profile is never merged by matching email alone', async () => {
-  const legacy = db.prepare("SELECT id, email FROM users_private WHERE email IS NOT NULL AND firebase_uid IS NULL LIMIT 1").get();
-  assert.ok(legacy, 'the seeded demo accounts still have legacy profiles');
+  // The product seed creates the studio account without a Firebase UID: that is a real
+  // "profile that has no sign-in account yet", which is exactly the collision case.
+  const legacy = db.prepare("SELECT id, email FROM users_private WHERE id = 'usr_studio'").get();
+  assert.ok(legacy, 'the studio account exists');
+  assert.equal(db.prepare('SELECT firebase_uid FROM users_private WHERE id = ?').get(legacy.id).firebase_uid, null);
 
   const id = newIdentity('collide');
   const res = await call('/api/auth/firebase/signup', {
@@ -475,72 +478,18 @@ test('FB 13 — an existing profile is never merged by matching email alone', as
   assert.equal(res.status, 409);
   assert.equal(res.json.error, 'ACCOUNT_LINK_REQUIRED');
   assert.equal(res.json.link_required, true);
-  assert.equal(userCountForUid(id.uid), 0, 'no new profile and no takeover of the legacy account');
+  assert.equal(userCountForUid(id.uid), 0, 'no new profile and no takeover of the existing account');
 
   const legacyAfter = db.prepare('SELECT id, firebase_uid FROM users_private WHERE id = ?').get(legacy.id);
-  assert.equal(legacyAfter.firebase_uid, null, 'the legacy profile must not silently gain a Firebase UID');
+  assert.equal(legacyAfter.firebase_uid, null, 'the existing profile must not silently gain a Firebase UID');
 
-  // Signing in with that Firebase account cannot reach the legacy profile either.
+  // Signing in with that Firebase account cannot reach the existing profile either.
   const session = await call('/api/auth/firebase/session', {
     method: 'POST',
     body: { idToken: mintToken({ uid: id.uid, email: legacy.email }) }
   });
   assert.equal(session.status, 409);
   assert.equal(session.json.error, 'PROFILE_REQUIRED');
-});
-
-test('FB 14 — an authenticated rider can deliberately link their own profile', async () => {
-  // Use the demo admin account: it already has a profile and a RideRise session.
-  const demo = await call('/api/auth/demo', { method: 'POST', body: { presetAccount: 'roshan' } });
-  assert.equal(demo.status, 200);
-
-  const id = newIdentity('link');
-  const unverified = await call('/api/auth/firebase/link', {
-    method: 'POST',
-    token: demo.json.token,
-    body: { idToken: mintToken({ uid: id.uid, email: id.email, emailVerified: false }) }
-  });
-  assert.equal(unverified.status, 403);
-  assert.equal(unverified.json.error, 'EMAIL_NOT_VERIFIED');
-
-  const linked = await call('/api/auth/firebase/link', {
-    method: 'POST',
-    token: demo.json.token,
-    body: { idToken: mintToken({ uid: id.uid, email: id.email }) }
-  });
-  assert.equal(linked.status, 200, JSON.stringify(linked.json));
-  assert.equal(linked.json.linked, true);
-
-  const row = db.prepare('SELECT firebase_uid, auth_provider, email_verified_at FROM users_private WHERE id = ?').get(demo.json.account.id);
-  assert.equal(row.firebase_uid, id.uid);
-  assert.equal(row.auth_provider, 'firebase');
-  assert.ok(row.email_verified_at);
-
-  // That Firebase account now signs straight into the same profile.
-  const login = await call('/api/auth/firebase/session', {
-    method: 'POST',
-    body: { idToken: mintToken({ uid: id.uid, email: id.email }) }
-  });
-  assert.equal(login.status, 200);
-  assert.equal(login.json.account.id, demo.json.account.id);
-
-  // A second Firebase account cannot steal the already-linked profile.
-  const other = newIdentity('steal');
-  const conflict = await call('/api/auth/firebase/link', {
-    method: 'POST',
-    token: demo.json.token,
-    body: { idToken: mintToken({ uid: other.uid, email: other.email }) }
-  });
-  assert.equal(conflict.status, 409);
-  assert.equal(conflict.json.error, 'ALREADY_LINKED');
-
-  // And this Firebase account cannot be attached to a second profile.
-  const signupConflict = await call('/api/auth/firebase/link', {
-    method: 'POST',
-    token: demo.json.token,
-    body: { idToken: mintToken({ uid: id.uid, email: id.email }) }
-  });
-  assert.equal(signupConflict.status, 200, 're-linking the same account is harmless');
 });
 
 test('FB 15 — status and sign-out describe the Firebase session honestly', async () => {
@@ -711,12 +660,25 @@ test('FB 22 — Google sign-in is fully removed from the app and the server', as
   assert.equal('googleClientId' in config.json, false);
   assert.equal('googleSignIn' in config.json.capabilities, false);
 
-  // A Google ID token can never become a session, on either endpoint.
+  // The Google route and the demo bridge are both gone: unknown routes, no session.
   for (const endpoint of ['/api/auth/demo', '/api/auth/google']) {
     const res = await call(endpoint, { method: 'POST', body: { idToken: 'eyJhbGciOiJSUzI1NiJ9.e30.sig' } });
-    assert.equal(res.status, 410, `${endpoint} must refuse Google credentials`);
-    assert.equal(res.json.error, 'GOOGLE_SIGNIN_REMOVED');
+    assert.equal(res.status, 404, `${endpoint} must not exist any more`);
     assert.equal(res.json.token, undefined);
+  }
+
+  // Nothing in the shipped server or web client can mint a session without Firebase.
+  const shipped = [path.join(root, 'backend', 'server.js')].concat(
+    fs
+      .readdirSync(path.join(root, 'web_app'))
+      .filter((name) => name.endsWith('.js') || name.endsWith('.html'))
+      .map((name) => path.join(root, 'web_app', name))
+  );
+  for (const file of shipped) {
+    const source = fs.readFileSync(file, 'utf8');
+    assert.equal(source.includes('ALLOW_DEMO_SIGNIN'), false, `${file} must not read a demo flag`);
+    assert.equal(source.includes("'/api/auth/demo'"), false, `${file} must not call a demo sign-in route`);
+    assert.equal(/authProvider:\s*'demo'/.test(source), false, `${file} must not mint demo sessions`);
   }
 
   // Client: nothing loads or calls Google's sign-in SDK.
@@ -765,23 +727,23 @@ test('FB 23 — a blocked certificate endpoint is reported as a server problem, 
   assert.equal(healthAfter.json.capabilities.firebaseVerifier, 'ok');
 });
 
-test('FB 19 — demo sign-in cannot mint a Firebase-linked or admin identity', async () => {
-  // The legacy demo bridge must never hand out a role from the request body.
-  const spoof = await call('/api/auth/demo', {
+test('FB 19 — a regular Firebase account can never be an administrator', async () => {
+  const id = newIdentity('notadmin');
+  const res = await call('/api/auth/firebase/signup', {
     method: 'POST',
-    body: { presetAccount: 'kasun', role: 'admin', email: 'evil@example.test' }
+    body: { idToken: mintToken({ uid: id.uid, email: id.email, overrides: { role: 'admin', admin: true } }), username: id.username }
   });
-  assert.equal(spoof.status, 200);
-  assert.equal(spoof.json.account.role, 'rider');
-  assert.notEqual(spoof.json.account.email, 'evil@example.test');
+  assert.equal(res.status, 200, JSON.stringify(res.json));
+  assert.equal(res.json.account.role, 'rider', 'a role claim in the request body is ignored');
 
-  const admin = await call('/api/admin/overview', { token: spoof.json.token });
-  assert.equal(admin.status, 403);
+  for (const endpoint of ['/api/admin/overview', '/api/admin/users', '/api/admin/reports', '/api/admin/audit']) {
+    const attempt = await call(endpoint, { token: res.json.token });
+    assert.equal([401, 403].includes(attempt.status), true, `${endpoint} must refuse a rider (got ${attempt.status})`);
+  }
 
-  // A Firebase session cannot be obtained from the demo bridge either.
-  const demoStatus = await call('/api/auth/firebase/status', { token: spoof.json.token });
-  assert.equal(demoStatus.status, 200);
-  assert.equal(demoStatus.json.linked, false);
-  assert.equal(demoStatus.json.provider, 'legacy');
-  assert.equal(demoStatus.json.message.includes('Link a Firebase account'), true);
+  // Escalating the role in the database is the only way in, and it requires the credential row.
+  const row = db.prepare('SELECT role, firebase_uid, auth_provider FROM users_private WHERE id = ?').get(res.json.account.id);
+  assert.equal(row.role, 'rider');
+  assert.equal(row.auth_provider, 'firebase');
+  assert.equal(row.firebase_uid, id.uid);
 });

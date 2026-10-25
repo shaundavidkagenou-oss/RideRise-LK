@@ -4,15 +4,20 @@
 // moderation/RBAC, IDOR protection, rate limiting, uploads and account deletion.
 process.env.DB_PATH = `/tmp/riderise_test_${Date.now()}.sqlite`;
 process.env.JWT_SECRET = 'test-suite-secret-do-not-use-in-production';
-// The demo bridge only creates throwaway riders when an operator opts in explicitly. Several
-// tests below rely on that development-only helper to create fresh accounts.
-process.env.ALLOW_DEMO_SIGNIN = '1';
+// Sample riders, posts and guilds are opt-in fixture data for this suite only. Sign-in is the
+// production path: a Firebase ID token minted with a throwaway key (see the helper).
+process.env.SEED_DEMO = '1';
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { server, db } = require('../backend/server.js');
+const firebaseTestAuth = require('./helpers/firebase_test_auth');
+firebaseTestAuth.useTestFirebaseEnv();
+
+const { server, db, firebaseAuth } = require('../backend/server.js');
 const { calculateBikeBuildRating } = require('../backend/services.js');
+
+firebaseTestAuth.installTestCertificates(firebaseAuth);
 
 let baseUrl = '';
 const tokens = {};
@@ -38,9 +43,18 @@ async function call(path, { method = 'GET', token = null, body = null, raw = fal
 }
 
 async function signIn(presetAccount) {
-  const res = await call('/api/auth/demo', { method: 'POST', body: { presetAccount } });
-  assert.equal(res.status, 200, `sign-in failed for ${presetAccount}`);
+  const res = await firebaseTestAuth.signInAsSampleRider(baseUrl, presetAccount);
+  assert.equal(res.status, 200, `sign-in failed for ${presetAccount}: ${JSON.stringify(res.json)}`);
   return res.json.token;
+}
+
+// A brand-new account, created through the real signup route and the real Firebase verifier.
+async function signUpFresh(username, displayName) {
+  const res = await firebaseTestAuth.signUpFresh(baseUrl, { username, displayName });
+  assert.equal(res.status, 200, `signup failed: ${JSON.stringify(res.json)}`);
+  // The session JSON plus the minted credential, so a test can sign in again as the same
+  // Firebase identity (e.g. to prove a suspension blocks sign-in).
+  return Object.assign({}, res.json, { idToken: res.idToken, email: res.email });
 }
 
 test.before(async () => {
@@ -82,37 +96,22 @@ test('1. Health, brand config and seeded content are served', async () => {
   assert.equal(config.json.brand.sriLankaDistricts.length, 25);
 });
 
-test('2. Google sign-in is gone; the demo bridge never accepts passwords or Google tokens', async () => {
-  // Google Sign-In / OAuth was removed. A Google ID token is refused outright...
-  const googleToken = await call('/api/auth/demo', { method: 'POST', body: { idToken: 'not-a-jwt' } });
-  assert.equal(googleToken.status, 410);
-  assert.equal(googleToken.json.error, 'GOOGLE_SIGNIN_REMOVED');
-  assert.equal(googleToken.json.token, undefined);
+test('2. There is no demo or Google sign-in route left in the product', async () => {
+  // The demo bridge was removed with the demo phase: both it and its deprecated Google alias
+  // are ordinary unknown routes now, and neither can ever return a session token.
+  for (const endpoint of ['/api/auth/demo', '/api/auth/google']) {
+    for (const body of [{}, { presetAccount: 'kasun' }, { email: 'someone@example.com', password: 'hunter2' }, { idToken: 'not-a-jwt' }]) {
+      const res = await call(endpoint, { method: 'POST', body });
+      assert.equal(res.status, 404, `${endpoint} must not exist any more`);
+      assert.equal(res.json.token, undefined);
+    }
+  }
 
-  // ...and so is the deprecated alias, which performs no Google request of any kind.
-  const alias = await call('/api/auth/google', { method: 'POST', body: { idToken: 'anything' } });
-  assert.equal(alias.status, 410);
-  assert.equal(alias.json.error, 'GOOGLE_SIGNIN_REMOVED');
-
-  // Passwords only ever go to Firebase Authentication.
-  const passwordAttempt = await call('/api/auth/demo', {
-    method: 'POST',
-    body: { email: 'someone@example.com', password: 'hunter2' }
-  });
-  assert.equal(passwordAttempt.status, 400);
-  assert.equal(passwordAttempt.json.error, 'PASSWORD_NOT_ALLOWED');
-
-  // With ALLOW_DEMO_SIGNIN=1 (set for this suite) the development-only throwaway helper works,
-  // but it can only ever produce a plain rider linked to no Google identity.
-  const throwaway = await call('/api/auth/demo', { method: 'POST', body: { email: 'who.is.this@example.com' } });
-  assert.equal(throwaway.status, 200);
-  assert.equal(throwaway.json.authProvider, 'demo');
-  assert.equal(throwaway.json.account.role, 'rider');
-  const throwawayRow = db.prepare('SELECT google_sub, firebase_uid, auth_provider FROM users_private WHERE id = ?').get(throwaway.json.account.id);
-  assert.match(throwawayRow.google_sub, /^demo_sub_/, 'no Google subject is invented');
-  assert.equal(throwawayRow.firebase_uid, null);
-  const adminAttempt = await call('/api/admin/overview', { token: throwaway.json.token });
-  assert.equal(adminAttempt.status, 403);
+  // The welcome screen is not offered a demo switch either.
+  const config = await call('/api/config');
+  assert.equal('demoSignInEnabled' in config.json, false);
+  assert.equal('demoSignIn' in config.json.capabilities || false, false);
+  assert.equal(config.json.capabilities.emailPasswordSignIn, config.json.firebase.configured);
 });
 
 test('3. Session requires a valid token and rejects tampering', async () => {
@@ -152,10 +151,9 @@ test('5. Private and friends-only profiles return restricted cards', async () =>
 });
 
 test('6. Onboarding enforces age, legal acceptance and unique usernames', async () => {
-  const fresh = await call('/api/auth/demo', { method: 'POST', body: { email: 'new.rider@example.com' } });
-  assert.equal(fresh.status, 200);
-  assert.equal(fresh.json.onboardingRequired, true);
-  const freshToken = fresh.json.token;
+  const fresh = await signUpFresh('new_rider', 'New Rider');
+  assert.equal(fresh.onboardingRequired, true);
+  const freshToken = fresh.token;
 
   const noAge = await call('/api/auth/onboarding', {
     method: 'POST',
@@ -913,8 +911,8 @@ test('24. Uploads validate media type and size limits', async () => {
 });
 
 test('25. Posting is rate limited to 10 per minute per account', async () => {
-  const fresh = await call('/api/auth/demo', { method: 'POST', body: { email: 'ratelimit.rider@example.com' } });
-  const token = fresh.json.token;
+  const fresh = await signUpFresh('ratelimit_rider', 'Rate Limit Rider');
+  const token = fresh.token;
   await call('/api/auth/onboarding', {
     method: 'POST',
     token,
@@ -944,8 +942,8 @@ test('25. Posting is rate limited to 10 per minute per account', async () => {
 });
 
 test('26. Account deletion removes profile, posts and access', async () => {
-  const fresh = await call('/api/auth/demo', { method: 'POST', body: { email: 'delete.me@example.com' } });
-  const token = fresh.json.token;
+  const fresh = await signUpFresh('delete_me_rider', 'Delete Me');
+  const token = fresh.token;
   const onboard = await call('/api/auth/onboarding', {
     method: 'POST',
     token,
@@ -1029,21 +1027,26 @@ test('28. Server-side XP engine rejects unknown or unsafe action types', () => {
   assert.equal(after, before + 25);
 });
 
-test('29. Removed Google credentials can never be replayed into a session', async () => {
-  // A Google-shaped JWT (valid or malformed) is not an accepted credential any more.
-  const res = await call('/api/auth/demo', {
+test('29. Only a verified Firebase ID token can produce a session', async () => {
+  // A Google-shaped JWT is not an accepted credential: no route reads it.
+  const google = await call('/api/auth/google', {
     method: 'POST',
     body: { idToken: 'eyJhbGciOiJSUzI1NiIsImtpZCI6ImZha2UifQ.eyJpc3MiOiJhY2NvdW50cy5nb29nbGUuY29tIn0.c2ln' }
   });
-  assert.equal(res.status, 410);
-  assert.equal(res.json.error, 'GOOGLE_SIGNIN_REMOVED');
-  assert.equal(res.json.token, undefined);
+  assert.equal(google.status, 404);
+  assert.equal(google.json.token, undefined);
 
-  const malformed = await call('/api/auth/demo', { method: 'POST', body: { idToken: 'not-a-jwt' } });
-  assert.equal(malformed.status, 410);
-  assert.equal(malformed.json.token, undefined);
+  // The Firebase route accepts only a token signed by the project's key: a Google-shaped or
+  // otherwise foreign JWT is rejected, and no session is minted.
+  for (const idToken of [
+    'eyJhbGciOiJSUzI1NiIsImtpZCI6ImZha2UifQ.eyJpc3MiOiJhY2NvdW50cy5nb29nbGUuY29tIn0.c2ln',
+    'not-a-jwt'
+  ]) {
+    const res = await call('/api/auth/firebase/session', { method: 'POST', body: { idToken } });
+    assert.equal(res.status, 401);
+    assert.equal(res.json.token, undefined);
+  }
 
-  // The only sign-in paths left are Firebase email/password and the local demo bridge.
   const config = await call('/api/config');
   assert.equal(config.json.firebase.emailVerificationRequired, true);
   assert.equal(config.json.capabilities.emailPasswordSignIn, config.json.firebase.configured);
@@ -1110,8 +1113,8 @@ test('30. Guild invitations, mutual friends, video uploads and suspension lifecy
   assert.equal(oversizedClip.status, 413);
 
   // --- Warning + temporary suspension lifecycle -----------------------------------
-  const warnTarget = await call('/api/auth/demo', { method: 'POST', body: { email: 'warn.target@example.com' } });
-  const warnToken = warnTarget.json.token;
+  const warnTarget = await signUpFresh('warn_target', 'Warn Target');
+  const warnToken = warnTarget.token;
   const onboard = await call('/api/auth/onboarding', {
     method: 'POST',
     token: warnToken,
@@ -1159,15 +1162,21 @@ test('30. Guild invitations, mutual friends, video uploads and suspension lifecy
   });
   assert.equal(suspend.status, 200);
 
-  const suspendedLogin = await call('/api/auth/demo', { method: 'POST', body: { email: 'warn.target@example.com' } });
+  const suspendedLogin = await call('/api/auth/firebase/session', {
+    method: 'POST',
+    body: { idToken: warnTarget.idToken }
+  });
   assert.equal(suspendedLogin.status, 403);
   assert.match(suspendedLogin.json.message, /suspended/i);
 
   // Expire the suspension and confirm automatic reinstatement
   db.prepare('UPDATE users_private SET suspension_until = ? WHERE id = ?').run(new Date(Date.now() - 60000).toISOString(), targetId);
-  const reopened = await call('/api/auth/demo', { method: 'POST', body: { email: 'warn.target@example.com' } });
+  const reopened = await call('/api/auth/firebase/session', {
+    method: 'POST',
+    body: { idToken: warnTarget.idToken }
+  });
   assert.equal(reopened.status, 200);
-  assert.equal(reopened.json.account.email, 'warn.target@example.com');
+  assert.equal(reopened.json.account.email, warnTarget.email);
 
   // --- Studio admin can adjust a guild member limit --------------------------------
   const limit = await call('/api/guilds/gld_colombo_builders', {
@@ -1182,9 +1191,7 @@ test('30. Guild invitations, mutual friends, video uploads and suspension lifecy
 });
 
 test('31. Voice ICE config never claims a relay that is not configured', async () => {
-  const k = await call('/api/auth/demo', { method: 'POST', body: { presetAccount: 'kasun' } });
-  assert.equal(k.status, 200);
-  const ice = await call('/api/voice/ice', { token: k.json.token });
+  const ice = await call('/api/voice/ice', { token: tokens.kasun });
   assert.equal(ice.status, 200);
   const hasTurn = (ice.json.iceServers || []).some((s) => [].concat(s.urls).some((u) => String(u).startsWith('turn')));
   assert.equal(ice.json.turn_available, hasTurn, 'turn_available must reflect the servers actually returned');

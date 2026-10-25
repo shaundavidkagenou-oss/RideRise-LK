@@ -79,24 +79,26 @@ DB_PATH=/tmp/riderise-migration-test.sqlite PORT=3123 node backend/server.js
 
 ## 4. Administrator credential bootstrap
 
-On first boot with an empty/legacy `admin_accounts` table:
+On first boot with an empty `admin_accounts` table the server creates exactly one credential:
 
-- development (`NODE_ENV` unset): username `admin$123$`, password `admin$123$`,
-  `must_change_password = 1`. The console blocks every write action until the password is
-  changed. The default is refused when `NODE_ENV=production`.
-- production: a random 18-byte password is generated and printed **once** to the server log.
-  Set `ADMIN_USERNAME` and `ADMIN_PASSWORD` to control it yourself.
+- username: `ADMIN_USERNAME`, or `studio-admin` by default.
+- password: `ADMIN_PASSWORD` (must be 12+ characters — anything shorter aborts the boot with a
+  clear message), or a generated 18-byte password printed **once** to the server log. A
+  generated password sets `must_change_password = 1`, so every write action is blocked until
+  it is replaced.
+- link: the credential is attached to the earliest `admin`/`moderator` profile. If that profile
+  is deleted or demoted, the next boot re-links the credential to the next one (or warns that
+  no administrator profile exists), so deleting a user can never lock the console out.
 
-If login answers `ADMIN_ACCOUNT_UNLINKED`, the credential is not attached to an admin user.
-Fix it after signing in as that admin (email/password, then Settings → Sign-in & security):
+There is no default password and no development credential. Verify the state with:
 
 ```sql
--- verify
 SELECT id, username, user_id, must_change_password FROM admin_accounts;
 SELECT id, username, role FROM users_private WHERE role IN ('admin','moderator');
--- link (use the real ids)
-UPDATE admin_accounts SET user_id = 'usr_admin_nethmi' WHERE username = 'admin$123$';
 ```
+
+`ADMIN_ACCOUNT_UNLINKED` means no `admin`/`moderator` profile exists at all: promote one in
+`users_private` and restart.
 
 ## 5. Indexes
 

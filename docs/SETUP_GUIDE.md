@@ -35,28 +35,25 @@ npm start                     # http://localhost:3000
 ```
 
 First start creates `backend/riderise_lk.sqlite`, applies the Phase 1 schema plus the Phase 2
-migration, and seeds demo riders, three guilds, four events, nine catalogue parts, 21 stunt
-modules and five learning pathways.
+migration, and seeds product content only: 7 ranks, 6 achievements, 21 stunt modules, the
+learning pathways, the draft legal documents and one non-personal studio account.
 
 Open <http://localhost:3000>. Real sign-in is Firebase email/password (step 4) and stays
-disabled — with an explanation — until you configure it. To look around immediately, press
-**Use a demo account** and pick one:
+disabled — with an explanation — until you configure it. There is no demo account button: the
+first real account you create is the first rider in the app, and the first post you publish is
+the first post in the feed.
 
-| Account | Use it for |
-|---|---|
-| `kasun.perera.demo@gmail.com` | normal rider, guild owner |
-| `roshan.fernando.demo@gmail.com` | guild moderator |
-| `dilshan.student.demo@gmail.com` | the 16–17 defaults (approximate-only location) |
-| `nethmi.admin@shaundavidstudios.lk` | studio admin with the full console |
+For a throwaway database with sample riders, posts, guilds and events, stop the server and run
+`npm run seed:reset && npm run start:sample`. Those sample riders have no sign-in credential.
 
-Admin console: open `#/admin` and sign in with **`admin$123$` / `admin$123$`** (the credential
-from the brief; it also works from Studio Console → Sign in).
+Studio console: open `#/admin`. On first boot the server prints the generated credential once
+(or uses `ADMIN_USERNAME`/`ADMIN_PASSWORD` if you set them).
 
 **Prove it worked**
 
 ```bash
 curl -s localhost:3000/api/health | python3 -m json.tool     # "phase": 2
-npm test                                                     # 93 tests, 93 pass
+npm test                                                     # 92 tests, 92 pass
 ```
 
 ---
@@ -145,10 +142,10 @@ shipping a default signing key.
 
 ## 3. Take ownership of the admin account
 
-1. Sign in at `https://your-domain/#/admin` with `admin$123$` / `admin$123$`
-   (or the `ADMIN_USERNAME`/`ADMIN_PASSWORD` you set).
-2. **Studio Console → 🔑 Password → Change password.** The demo credential is public in the
-   project brief — change it before a single real rider registers.
+1. Sign in at `https://your-domain/#/admin` with the `ADMIN_USERNAME`/`ADMIN_PASSWORD` you set,
+   or the password printed once in the server log on first boot.
+2. **Studio Console → 🔑 Password → Change password** if the server generated it. Keep it in a
+   password manager before a single real rider registers.
 3. Optional: create named moderator accounts (role `moderator`) so staff actions are
    attributable in the audit log.
 
@@ -229,10 +226,10 @@ holds its public web config; `npm start` loads it automatically.
 - Until `FIREBASE_PROJECT_ID` + `FIREBASE_API_KEY` are set, the email/password form renders
   **disabled** and says which variable is missing. Nothing is faked and no account is created.
 - Passwords live only in Firebase. RideRise LK stores no password, hash or salt.
-- The demo-account sheet is only for evaluating the build. It is refused in production unless
-  you set `ALLOW_DEMO_SIGNIN=1`, and it can never grant an administrator role.
-- Existing demo profiles are **never** merged into a Firebase account by matching email. A
-  rider signs in to the old profile and links it from **Settings → Sign-in & security**.
+- There is no demo or sandbox sign-in: `/api/auth/demo` and `/api/auth/google` return `404`,
+  and no code path mints a session without a verified Firebase ID token.
+- Profiles are **never** merged into a Firebase account by matching email, and no endpoint
+  attaches an identity to an existing profile.
 - The APK uses the same web config. Session persistence inside the WebView is implemented but
   **not verified on a real device** — see `docs/FIREBASE_AUTH.md` §8.
 
@@ -241,8 +238,7 @@ holds its public web config; `npm start` loads it automatically.
 RideRise LK no longer offers Google sign-in, and the server no longer reads
 `GOOGLE_CLIENT_ID`. There is **no Google OAuth consent screen, no popup, no client ID and no
 redirect URI** to configure. Any older instructions you find about a Google button are
-historical: the only sign-in paths are **Firebase email/password** (above) and the
-clearly-labelled demo accounts used to evaluate the build.
+historical: the only sign-in path is **Firebase email/password** (above).
 
 If a `GOOGLE_CLIENT_ID` is still present in your environment it is ignored — delete it when
 convenient.
@@ -423,7 +419,7 @@ First run in the APK:
 
 1. It asks for the server address — paste the **HTTPS** URL from step 2. It is stored on the
    device (Settings → Server Connection to change it).
-2. Sign in. In the demo build the Google sheet appears with the four demo accounts.
+2. Sign in with a real email/password account created in the app (or on the web build).
 3. Grant microphone when you join a voice room, location only when you press **Start sharing**,
    notifications when the app asks (Android 13+).
 
@@ -456,7 +452,7 @@ you own the replacement; keep the aspect ratio.
    only; that is fine for direct installs and internal testing.
 2. Required before review: privacy policy URL, data-safety form, content rating, target-API
    declaration, account-deletion route (implemented: `DELETE /api/account`, plus the in-app
-   "Delete my account" flow), and a demo account for reviewers.
+   "Delete my account" flow), and a working test account with credentials for reviewers.
 3. Because riders can be 16–17, fill the data-safety form for **location (approximate by
    default, never shared without an explicit session)** and **audio (voice chat, not recorded)**.
 4. Signing: use Play App Signing. Upload-key SHA-1s and the Firebase Android app must match
@@ -495,7 +491,7 @@ you own the replacement; keep the aspect ratio.
 | Admin console write blocked with `PASSWORD_CHANGE_REQUIRED` | `must_change_password` is set | Studio Console → 🔑 Password |
 | `npm test` killed / OOM | suites run serially for this reason | don't parallelise; 2 GB RAM is enough as configured |
 | Push log shows `HTTP 403` | FCM API not enabled | enable it in Google Cloud (step 5a.4) |
-| `403 DEMO_SIGNIN_DISABLED` on a demo account | production without `ALLOW_DEMO_SIGNIN=1` | expected — sign in with a real email/password account |
+| `404` on `/api/auth/demo` or `/api/auth/google` | those routes were removed with the demo phase | expected — sign in with Firebase email/password |
 | Verification email never arrives | wrong address, or spam | press **Resend verification email** on the gate; check Authentication → Templates |
 
 ---

@@ -482,17 +482,6 @@ body.high-contrast .notif-row { border-color: rgba(255, 255, 255, .5); }
 .auth-notice { padding: 14px; border-radius: 12px; background: rgba(255, 176, 32, 0.1); border: 1px solid rgba(255, 176, 32, 0.32); }
 .auth-notice p { margin: 8px 0 0; font-size: 0.84rem; line-height: 1.5; color: var(--text-secondary, #c9c9d3); }
 .auth-notice code { font-size: 0.78rem; }
-.auth-demo-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  margin-top: 14px;
-  padding-top: 12px;
-  border-top: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
-  font-size: 0.8rem;
-  color: var(--text-secondary, #b8b8c4);
-}
 .auth-fineprint { margin: 12px 0 0; font-size: 0.76rem; line-height: 1.5; color: var(--text-secondary, #9a9aa7); }
 .btn-block { display: block; width: 100%; }
 .verify-badge { font-size: 2.4rem; margin-bottom: 6px; }

@@ -6,8 +6,16 @@ const { JSDOM, VirtualConsole } = require('jsdom');
 
 process.env.DB_PATH = `/tmp/riderise_flows_${Date.now()}.sqlite`;
 process.env.JWT_SECRET = 'flows-test-secret';
+// Opt-in sample content for the journeys below. Sign-in still goes through the real Firebase
+// verifier with a locally minted ID token.
+process.env.SEED_DEMO = '1';
 
-const { server, db } = require('../backend/server.js');
+const firebaseTestAuth = require('./helpers/firebase_test_auth');
+firebaseTestAuth.useTestFirebaseEnv();
+
+const { server, db, firebaseAuth } = require('../backend/server.js');
+
+firebaseTestAuth.installTestCertificates(firebaseAuth);
 let baseUrl = '';
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -46,11 +54,8 @@ async function bootAs(preset) {
   });
 
   // Authenticate first so the token is present in localStorage before the app boots
-  const auth = await fetch(`${baseUrl}/api/auth/demo`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ presetAccount: preset })
-  }).then((r) => r.json());
+  const auth = await firebaseTestAuth.signInAsSampleRider(baseUrl, preset);
+  assert.equal(auth.status, 200, `sign-in failed: ${JSON.stringify(auth.json)}`);
 
   const dom = await JSDOM.fromURL(`${baseUrl}/`, {
     runScripts: 'dangerously',
@@ -58,7 +63,7 @@ async function bootAs(preset) {
     pretendToBeVisual: true,
     virtualConsole,
     beforeParse(window) {
-      window.localStorage.setItem('rr_token', auth.token);
+      window.localStorage.setItem('rr_token', auth.json.token);
       window.fetch = (input, init) => fetch(new URL(input, baseUrl).toString(), init);
       window.AbortController = AbortController;
       window.scrollTo = () => {};
@@ -284,13 +289,10 @@ test('FLOW 8 — guild owner invites a rider and the invitation reaches them', a
     await waitFor(() => /Invitation sent|already/i.test(document.querySelector('.toast')?.textContent || ''), 12000, 'invite toast');
 
     // The invited rider sees the pending invitation in their guild list
-    const invitee = await fetch(`${baseUrl}/api/auth/demo`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ presetAccount: 'roshan' })
-    }).then((r) => r.json());
+    const invitee = await firebaseTestAuth.signInAsSampleRider(baseUrl, 'roshan');
+    assert.equal(invitee.status, 200);
     const guilds = await fetch(`${baseUrl}/api/guilds`, {
-      headers: { Authorization: `Bearer ${invitee.token}` }
+      headers: { Authorization: `Bearer ${invitee.json.token}` }
     }).then((r) => r.json());
     const invited = guilds.guilds.find((g) => g.id === 'gld_southern_bmx');
     assert.ok(['invited', 'active'].includes(invited.my_status), 'invitation should be recorded for the rider');

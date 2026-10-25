@@ -62,7 +62,7 @@ const nodeOk = major > 22 || (major === 22 && minor >= 5);
 if (envFile) {
   ok('.env file found', `${Object.keys(envFile.values).length} variable(s) defined`, 'Start with: node --env-file=.env backend/server.js');
 } else {
-  info('No .env file', 'the app runs fully in demo mode', 'Optional: cp .env.example .env (see docs/SETUP_GUIDE.md step 2).');
+  info('No .env file', 'the app runs with built-in defaults and no Firebase sign-in', 'Optional: cp .env.example .env (see docs/SETUP_GUIDE.md step 2).');
 }
 
 /* ---------------------------------- secrets ------------------------------- */
@@ -81,12 +81,16 @@ if (jwt.length >= 32) {
 /* --------------------------------- accounts ------------------------------- */
 const adminUser = env('ADMIN_USERNAME');
 const adminPass = env('ADMIN_PASSWORD');
-if (adminPass) {
-  ok('Studio admin credential supplied', `username "${adminUser || 'admin$123$'}" (${envSource('ADMIN_PASSWORD')})`);
-} else if (isProd) {
-  fail('No ADMIN_PASSWORD in production', 'a random password is printed once in the log and must be changed at first sign-in', 'Set ADMIN_USERNAME/ADMIN_PASSWORD, or read the generated one from the log.');
+if (adminPass && adminPass.length < 12) {
+  fail('ADMIN_PASSWORD is too short', `${adminPass.length} characters — the server refuses to create the credential`, 'Use at least 12 characters (a passphrase is easiest), then restart.');
+} else if (adminPass) {
+  ok('Studio admin credential supplied', `username "${adminUser || 'studio-admin'}" (${envSource('ADMIN_PASSWORD')})`);
 } else {
-  info('Using the documented demo admin', '"admin$123$" / "admin$123$" (refused in production)', 'Before real riders: change it in Studio Console → 🔑 Password, and set ADMIN_PASSWORD.');
+  info(
+    'No ADMIN_PASSWORD set',
+    'on first boot the server generates a strong password and prints it once in the log',
+    'Set ADMIN_USERNAME/ADMIN_PASSWORD if you want to choose it yourself. No default password exists.'
+  );
 }
 
 /* ------------------------- firebase auth (email/password) ------------------ */
@@ -94,7 +98,6 @@ const fbProject = env('FIREBASE_PROJECT_ID');
 const fbApiKey = env('FIREBASE_API_KEY') || env('FIREBASE_WEB_API_KEY');
 const fbAuthDomain = env('FIREBASE_AUTH_DOMAIN');
 const fbAppId = env('FIREBASE_APP_ID');
-const demoAllowed = env('ALLOW_DEMO_SIGNIN');
 const isProdEnv = env('NODE_ENV') === 'production';
 
 if (fbProject && fbApiKey) {
@@ -120,8 +123,11 @@ if (fbProject && fbApiKey) {
     'docs/FIREBASE_AUTH.md steps 1–6 (~10 minutes) — or set FIREBASE_PROJECT_ID + FIREBASE_API_KEY.'
   );
 }
-if (isProdEnv && demoAllowed !== '0' && demoAllowed !== '1') {
-  warn('Demo sign-in state in production', 'refused unless ALLOW_DEMO_SIGNIN=1, which is the safe default', 'Leave it unset (or 0) so only real email/password accounts can sign in.');
+if (env('ALLOW_DEMO_SIGNIN')) {
+  info('ALLOW_DEMO_SIGNIN is set but ignored', 'the demo bridge was removed; only Firebase email/password can sign in', 'Delete the variable from .env.');
+}
+if (env('SEED_DEMO') === '1' && isProdEnv) {
+  warn('SEED_DEMO=1 in production', 'ignored: production never seeds sample riders or sample content', 'Remove it; sample content is for throwaway development databases only.');
 }
 if (env('GOOGLE_CLIENT_ID')) {
   info('GOOGLE_CLIENT_ID is set but ignored', 'Google sign-in was removed; riders sign in with Firebase email/password', 'Delete the variable from .env — it no longer has any effect.');
@@ -320,7 +326,7 @@ if (fs.existsSync(dbPath)) {
       warn('Admin must change password', 'moderation writes are blocked until the bootstrap password is changed', 'Sign in at #/admin → Security.');
     }
   } catch (err) {
-    warn('Database present but unreadable', err.message, 'Check file permissions, or delete it to reseed a demo database.');
+    warn('Database present but unreadable', err.message, 'Check file permissions, or delete it to reseed a clean database.');
   }
 } else {
   info('No database yet', 'it is created, migrated and seeded on first start', 'Run `npm start`.');
@@ -379,9 +385,9 @@ async function probe() {
         'Set FIREBASE_PROJECT_ID and FIREBASE_API_KEY, then redeploy.'
       );
     }
-    (config.demoSignInEnabled ? info : ok)(
+    ok(
       '  Demo sign-in',
-      config.demoSignInEnabled ? 'enabled (evaluation builds only)' : 'disabled'
+      config.demoSignInEnabled === undefined ? 'removed — no demo or sandbox session exists' : 'still advertised by this server; redeploy the current build'
     );
   } catch (err) {
     fail('Deployment unreachable', `${probeUrl} — ${err.message}`, 'Check the URL, TLS certificate and that the process is running.');

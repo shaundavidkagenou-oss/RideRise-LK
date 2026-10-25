@@ -37,9 +37,9 @@ this is the honest record of what that environment supports.
    (`EXTERNAL_CONFIG.md` §4) and the authorization rules that must be preserved are spelled
    out explicitly.
 
-3. **Authentication: Firebase email/password** with server-side ID-token verification, plus a
-   clearly-labelled **local demo bridge** so every role and journey is testable without a
-   Firebase project. Google OAuth was removed. See `FIREBASE_AUTH.md`.
+3. **Authentication: Firebase email/password** with server-side ID-token verification. There
+   is no demo or sandbox session: without a Firebase project nobody can sign in, and the form
+   says so. Google OAuth and the demo bridge were removed. See `FIREBASE_AUTH.md`.
 
 4. **Push notifications: server sending is configured; the Android FCM build is complete.**
    The in-app notification centre, `POST /api/devices`, FCM HTTP v1 sender, notification

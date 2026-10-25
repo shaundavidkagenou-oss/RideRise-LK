@@ -32,8 +32,9 @@ npm start
 ```
 
 On first run the SQLite database `backend/riderise_lk.sqlite` is created from
-`backend/schema.sql` and seeded by `backend/seed.js` (ranks, achievements, 21 stunt
-modules, 9 catalog categories, 4 official events, legal documents, demo riders).
+`backend/schema.sql` and seeded by `backend/seed.js` (ranks, achievements, 21 stunt modules,
+learning pathways, legal documents and one studio account). Real riders, posts, guilds,
+events and catalog prices are created in the app by real accounts.
 
 Environment variables:
 
@@ -46,11 +47,13 @@ Environment variables:
 | `FIREBASE_PROJECT_ID` / `FIREBASE_API_KEY` | *unset* | Enables real email/password sign-in (`docs/FIREBASE_AUTH.md`) |
 | `GOOGLE_CLIENT_ID` | *ignored* | Google Sign-In was removed; the variable is no longer read |
 
-Reset the demo data:
+Add optional sample content to a throwaway database (development only):
 
 ```bash
-npm run seed:reset && npm start
+npm run seed:reset && npm run start:sample
 ```
+
+Reset to a clean product database: `npm run seed:reset && npm start`.
 
 Deploying: any container/host that runs Node 22 and can persist a file volume for the
 SQLite database. Mount the DB file on durable storage, terminate TLS at the proxy, and set
@@ -129,7 +132,7 @@ Edit `config/brand.config.json` → `packageId`, then also update
 ## 4. Running the automated tests
 
 ```bash
-npm test                    # 93 tests: API, Firebase auth, UI journeys, Android push + FCM credentials
+npm test                    # 92 tests: API, Firebase auth, UI journeys, Android push + FCM credentials
 npm run test:api
 npm run test:ui
 npm run check:android-push  # 37 static FCM/Gradle checks (also inside `npm test`)

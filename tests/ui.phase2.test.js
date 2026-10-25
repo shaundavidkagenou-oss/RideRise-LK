@@ -9,8 +9,14 @@ const { JSDOM, VirtualConsole } = require('jsdom');
 
 process.env.DB_PATH = `/tmp/riderise_phase2_ui_${Date.now()}.sqlite`;
 process.env.JWT_SECRET = 'phase2-ui-test-secret';
+process.env.SEED_DEMO = '1';
 
-const { server, db } = require('../backend/server.js');
+const firebaseTestAuth = require('./helpers/firebase_test_auth');
+firebaseTestAuth.useTestFirebaseEnv();
+
+const { server, db, firebaseAuth } = require('../backend/server.js');
+
+firebaseTestAuth.installTestCertificates(firebaseAuth);
 
 let baseUrl = '';
 
@@ -28,12 +34,8 @@ async function waitFor(predicate, timeout = 12000, label = 'condition') {
 }
 
 async function signIn(preset) {
-  const res = await fetch(`${baseUrl}/api/auth/demo`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ presetAccount: preset })
-  });
-  return (await res.json()).token;
+  const res = await firebaseTestAuth.signInAsSampleRider(baseUrl, preset);
+  return res.json.token;
 }
 
 async function bootApp(bootToken = null) {

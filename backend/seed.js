@@ -3,10 +3,32 @@ const { calculateBikeBuildRating } = require('./services');
 
 const DRAFT_SAFETY_NOTICE_VERBATIM = `Bicycle riding and stunt riding involve inherent risks, including serious injury, permanent disability, or death. RideRise LK provides community features and educational information; it does not supervise individual riding activities, certify a rider's ability, or guarantee that user-generated information is accurate or safe. Users should ride only in lawful, suitable, controlled environments, use appropriate protective equipment, inspect their bicycles, and seek qualified instruction. Do not perform stunts on busy roads, among traffic, or near pedestrians. Participation in riding activities is voluntary and at the user's own risk to the extent permitted by applicable law. Nothing in these terms excludes or limits any responsibility that cannot legally be excluded. Shaun David Studios does not guarantee the safety of third-party sellers, products, events, or user posts.`;
 
-function seedDatabase(db) {
+/**
+ * Product content is always seeded: ranks, achievements, the 21-module stunt library, its
+ * learning pathways, the draft legal documents and one non-personal studio account.
+ *
+ * Sample community content (riders, bikes, guilds, posts, messages, events, catalog prices,
+ * moderation queue) is opt-in and development-only:
+ *
+ *   SEED_DEMO=1  seed the sample community too (local development, tests)
+ *   unset        product content only — what every real deployment gets
+ *
+ * The sample riders are inert: their Firebase UIDs are local placeholders that no real
+ * Firebase project can issue, so they cannot be signed into by anyone.
+ */
+function resolveDemoSeed(explicit) {
+  // Production never receives sample riders, sample posts or sample prices, whatever the
+  // environment says. Sample content exists only for local development and the test suite.
+  if (process.env.NODE_ENV === 'production') return false;
+  if (typeof explicit === 'boolean') return explicit;
+  return String(process.env.SEED_DEMO || '').trim() === '1';
+}
+
+function seedDatabase(db, options = {}) {
   const existingRanks = db.prepare('SELECT COUNT(*) as c FROM ranks').get().c;
   if (existingRanks > 0) return;
 
+  const demo = resolveDemoSeed(options.demo);
   const now = '2026-10-25T05:00:00.000Z';
 
   // 1. Seed 7 Configurable Rider Ranks
@@ -149,10 +171,14 @@ function seedDatabase(db) {
   }
 
   // 3. Seed Users & Profiles (Strict separation of users_private and profiles)
-  const sampleUsers = [
+  // Production gets exactly one account: "Shaun David Studios", the author of official content
+  // and the identity the admin console links to. It has no password and cannot sign in through
+  // Firebase; console access uses the separate admin credential.
+  const sampleUsers = demo ? [
     {
       id: 'usr_admin_nethmi',
       google_sub: 'google_oauth_sub_admin_001',
+      firebase_uid: 'demo-uid-admin-001',
       email: 'nethmi.admin@shaundavidstudios.lk',
       dob_private: '1997-04-12',
       is_minor: 0,
@@ -170,6 +196,7 @@ function seedDatabase(db) {
     {
       id: 'usr_kasun',
       google_sub: 'google_oauth_sub_kasun_002',
+      firebase_uid: 'demo-uid-kasun-002',
       email: 'kasun.perera.private@example.com',
       dob_private: '2001-08-19',
       is_minor: 0,
@@ -187,6 +214,7 @@ function seedDatabase(db) {
     {
       id: 'usr_roshan',
       google_sub: 'google_oauth_sub_roshan_003',
+      firebase_uid: 'demo-uid-roshan-003',
       email: 'roshan.fernando.private@example.com',
       dob_private: '2003-11-05',
       is_minor: 0,
@@ -204,6 +232,7 @@ function seedDatabase(db) {
     {
       id: 'usr_dilshan_minor',
       google_sub: 'google_oauth_sub_dilshan_004',
+      firebase_uid: 'demo-uid-dilshan-004',
       email: 'dilshan.student.private@example.com',
       dob_private: '2009-06-15', // 17 years old in Oct 2026 -> minor safeguards active!
       is_minor: 1,
@@ -218,14 +247,34 @@ function seedDatabase(db) {
       profile_visibility: 'friends',
       hide_from_leaderboards: 1
     }
+  ] : [
+    {
+      id: 'usr_studio',
+      google_sub: 'studio_account_local',
+      email: 'support@shaundavidstudios.lk',
+      // System account, not a person: the date exists only to satisfy the 16+ schema.
+      dob_private: '1990-01-01',
+      is_minor: 0,
+      role: 'admin',
+      username: 'shaundavidstudios',
+      display_name: 'Shaun David Studios',
+      bio: 'Official RideRise LK studio account — announcements, safety notices and moderation.',
+      district: 'Colombo',
+      preferred_riding_area: 'Studio account (no public riding location)',
+      xp: 0,
+      rank_id: 'rank_1',
+      profile_visibility: 'public',
+      hide_from_leaderboards: 1
+    }
   ];
 
   const insertPrivateUser = db.prepare(`
     INSERT INTO users_private (
-      id, google_sub, email, dob_private, is_minor, age_confirmed, age_confirmed_at,
-      terms_accepted_version, terms_accepted_at, privacy_accepted_at, guidelines_accepted_at,
-      safety_notice_accepted_at, onboarding_completed, role, account_status, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, 1, ?, '1.0', ?, ?, ?, ?, 1, ?, 'active', ?, ?)
+      id, google_sub, firebase_uid, auth_provider, email_verified_at, email, dob_private,
+      is_minor, age_confirmed, age_confirmed_at, terms_accepted_version, terms_accepted_at,
+      privacy_accepted_at, guidelines_accepted_at, safety_notice_accepted_at,
+      onboarding_completed, role, account_status, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, '1.0', ?, ?, ?, ?, 1, ?, 'active', ?, ?)
   `);
 
   const insertProfile = db.prepare(`
@@ -237,9 +286,13 @@ function seedDatabase(db) {
   `);
 
   for (const u of sampleUsers) {
+    const firebaseUid = u.firebase_uid || null;
     insertPrivateUser.run(
       u.id,
       u.google_sub,
+      firebaseUid,
+      firebaseUid ? 'firebase' : 'legacy',
+      firebaseUid ? now : null,
       u.email,
       u.dob_private,
       u.is_minor,
@@ -269,6 +322,7 @@ function seedDatabase(db) {
     );
   }
 
+  if (demo) {
   // Award sample achievements
   const insertUserAch = db.prepare(
     'INSERT INTO user_achievements (id, user_id, achievement_id, awarded_at, awarded_reason) VALUES (?, ?, ?, ?, ?)'
@@ -288,7 +342,9 @@ function seedDatabase(db) {
   insertXpLog.run('xpl_2', 'usr_kasun', 'stunt_module_completed', 50, 'Completed Module: Bunny-Hop Preparation & Fundamentals', 'mod_fund_6', now);
   insertXpLog.run('xpl_3', 'usr_kasun', 'bike_questionnaire_completed', 35, 'Completed Guided Bicycle Build & Safety Questionnaire', 'bike_kasun_1', now);
   insertXpLog.run('xpl_4', 'usr_kasun', 'official_event_registered', 30, 'Registered for Bentota Sunset BMX Clinic & Safety Jam', 'evt_sds_1', now);
+  }
 
+  if (demo) {
   // 4. Seed Bicycles with transparent 13-question Bike Build Ratings
   const sampleBikes = [
     {
@@ -633,6 +689,8 @@ function seedDatabase(db) {
     'visible',
     now
   );
+
+  } // end demo community content
 
   // 8. Seed Complete Stunt-Learning Library (All 4 Required Categories & 21 Modules)
   const stuntModules = [
@@ -1399,6 +1457,7 @@ function seedDatabase(db) {
     );
   }
 
+  if (demo) {
   // Seed sample user progress
   const insertProgress = db.prepare(`
     INSERT INTO user_stunt_progress (user_id, module_id, status, checklist_completed, safety_ack_at, quiz_score, completed_at)
@@ -1409,8 +1468,11 @@ function seedDatabase(db) {
   }
   insertProgress.run('usr_dilshan_minor', 'mod_fund_1', now, now);
   insertProgress.run('usr_dilshan_minor', 'mod_fund_2', now, now);
+  }
 
-  // 9. Seed Sri Lankan Bicycle-Parts Catalog (All 9 Categories, honest verified vs "Price not verified" labels)
+  // 9. Seed Sri Lankan Bicycle-Parts Catalog (parts are demo-only: production prices must be
+  // entered and verified by the studio, never invented) (All 9 Categories, honest verified vs "Price not verified" labels)
+  if (demo) {
   const partsCatalog = [
     {
       id: 'part_1',
@@ -1563,8 +1625,11 @@ function seedDatabase(db) {
       p.availability, p.compatibility_warning, p.last_verified_date
     );
   }
+  } // end demo catalog
 
-  // 10. Seed Official Shaun David Studios Events + Community Event
+  // 10. Seed Official Shaun David Studios Events + Community Event (demo-only: real events are
+  // created by studio staff in the admin console)
+  if (demo) {
   const studioEvents = [
     {
       id: 'evt_sds_1',
@@ -1674,6 +1739,7 @@ function seedDatabase(db) {
   insertEventReg.run('evt_sds_1', 'usr_kasun', 'registered', now);
   insertEventReg.run('evt_sds_1', 'usr_admin_nethmi', 'registered', now);
   insertEventReg.run('evt_sds_2', 'usr_roshan', 'registered', now);
+  } // end demo events
 
   // 11. Seed Legal & Safety Documents (Including Verbatim Draft Safety Notice from Section 15)
   const legalDocs = [
@@ -1740,12 +1806,13 @@ Users must **never** treat a social feature, tutorial, leaderboard, bike build s
 
   const insertLegal = db.prepare(`
     INSERT INTO legal_documents (slug, title, version, content_markdown, updated_at, updated_by_admin_id)
-    VALUES (?, ?, ?, ?, ?, 'usr_admin_nethmi')
+    VALUES (?, ?, ?, ?, ?, '${demo ? 'usr_admin_nethmi' : 'usr_studio'}')
   `);
   for (const doc of legalDocs) {
     insertLegal.run(doc.slug, doc.title, doc.version, doc.content_markdown, now);
   }
 
+  if (demo) {
   // 12. Seed a sample pending report & notifications for testing Admin Moderation
   db.prepare(`
     INSERT INTO reports (
@@ -1785,9 +1852,11 @@ Users must **never** treat a social feature, tutorial, leaderboard, bike build s
     'evt_sds_1',
     now
   );
+  } // end demo moderation queue
 }
 
 module.exports = {
   DRAFT_SAFETY_NOTICE_VERBATIM,
-  seedDatabase
+  seedDatabase,
+  resolveDemoSeed
 };

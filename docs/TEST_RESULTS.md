@@ -22,7 +22,7 @@ Two suites, both executing the **real backend**:
 | # | Test | Requirement covered | Result |
 |---|---|---|---|
 | 1 | Health, brand config, seeded content | §1 branding, §5 ranks, §15 legal docs | PASS |
-| 2 | Google sign-in removed; demo bridge rejects passwords and Google tokens | §3 auth errors, no password handling | PASS |
+| 2 | No demo or Google sign-in route exists; only a verified Firebase token mints a session | §3 auth errors, no password handling | PASS |
 | 3 | Session requires valid token; tampering rejected | §3 secure session persistence, §18 auth | PASS |
 | 4 | Public profiles never expose email/DOB/OAuth subject | §4, §16 private vs public data | PASS |
 | 5 | Private and friends-only profiles return restricted cards | §4, §16 privacy defaults | PASS |
@@ -56,7 +56,7 @@ Two suites, both executing the **real backend**:
 
 | # | Journey | Result |
 |---|---|---|
-| UI 1 | Animated splash → welcome hero (logo, 16+, safety strip) → email/password form + demo sheet | PASS |
+| UI 1 | Animated splash → welcome hero (logo, 16+, safety strip) → email/password form, no demo button | PASS |
 | UI 2 | Sign in → feed renders seeded posts, safety strip, XP bar, 5-tab bottom nav | PASS |
 | UI 3 | Walk all 12 primary routes + admin console + guild detail + public profile, zero uncaught JS errors | PASS |
 | UI 4 | Onboarding blocks without age confirmation → legal step → profile → privacy → lands on feed; server marks minor | PASS |
@@ -106,8 +106,8 @@ Certificate and file digests: `release/BUILD_INFO.md`, `release/apk/SHA256SUMS.t
 4. **Visual screenshot review.** No browser rendering engine is available, so layout was
    verified structurally (jsdom) and by CSS review rather than pixel screenshots. The live
    preview URL shows the real rendering.
-5. **Load/scale testing.** SQLite and single-process Node comfortably handle Phase 1 demo
-   volumes; a production launch should migrate to Postgres and run load tests.
+5. **Load/scale testing.** SQLite and single-process Node comfortably handle pilot volumes;
+   a production launch should migrate to Postgres and run load tests.
 6. **Legal compliance.** The documents are drafts; they explicitly say so and need counsel
    review.
 
@@ -115,8 +115,8 @@ Certificate and file digests: `release/BUILD_INFO.md`, `release/apk/SHA256SUMS.t
 
 - Media is stored as validated data URLs in the database (5 MB cap, EXIF/GPS removed).
   Production should move to object storage with signed URLs.
-- Uploaded avatars/posts show the studio badge as the seeded demo image; real uploads are
-  stored and served from the API session.
+- Uploaded avatars/posts show the studio badge as the default image; real uploads are stored
+  and served from the API session.
 - Live maps, group voice and walkie-talkie are Phase 2 (no location fields exist yet).
 - Session revocation is global via `JWT_SECRET` rotation (no per-device session table).
 - Notification delivery is in-app only until FCM is configured.
