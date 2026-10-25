@@ -5,6 +5,10 @@ This is the end-to-end guide for your Enzonic panel
 Follow it in order. Every step has a "you should see" line so you can tell it worked before
 moving on.
 
+> **Cannot get the panel to start?** `Insufficient node RAM capacity` is a host-capacity problem.
+> [`FREE_HOSTING_OPTIONS.md`](FREE_HOSTING_OPTIONS.md) lists what actually runs this 24/7 for free
+> (a free-forever VM + one setup script) and the options that silently lose data.
+
 > **First time deploying anything?** Use
 > [`SERVER_SETUP_WALKTHROUGH.md`](SERVER_SETUP_WALKTHROUGH.md) instead — same result, written as
 > literal clicks and console commands for your panel.

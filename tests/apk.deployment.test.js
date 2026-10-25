@@ -532,3 +532,31 @@ test('APK-14 — a .env next to package.json is read even when the panel runs th
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('APK-15 — the VM setup script is complete, safe to re-run and free of secrets', () => {
+  const vm = read('deploy', 'vm', 'setup.sh');
+  // Fails before touching the machine when the hostname is wrong.
+  assert.match(vm, /does not look like a hostname/);
+  // The three things a fresh Ubuntu box needs for this app.
+  assert.match(vm, /node:sqlite/, 'must refuse a Node that cannot load node:sqlite');
+  assert.match(vm, /setup_24\.x/, 'must install Node 24');
+  assert.match(vm, /ExecStart=.*backend\/server\.js/, 'must run the real entry point');
+  // Service must survive reboot and crashes.
+  assert.match(vm, /Restart=always/);
+  assert.match(vm, /systemctl enable riderise/);
+  // Caddy terminates TLS for the hostname it was given.
+  assert.match(vm, /reverse_proxy 127\.0\.0\.1:\$PORT/);
+  assert.match(vm, /systemctl (enable|restart) caddy/);
+  // Re-running must not wipe the database or the secrets.
+  assert.match(vm, /if \[ ! -f "\$APP_DIR\/\.env" \]/);
+  assert.match(vm, /git -C "\$APP_DIR" pull/);
+  assert.doesNotMatch(vm, /rm -rf "\$APP_DIR"/);
+  // No credentials in a committed file.
+  assert.doesNotMatch(vm, /JWT_SECRET=[A-Za-z0-9]{20,}/);
+  assert.doesNotMatch(vm, /FIREBASE_API_KEY=[A-Za-z0-9_-]{20,}/);
+  // And the guide that explains when to use it.
+  const doc = read('docs', 'FREE_HOSTING_OPTIONS.md');
+  assert.match(doc, /Oracle Cloud/);
+  assert.match(doc, /render/i, 'must name the hosting option that silently loses SQLite data');
+  assert.match(doc, /DuckDNS/);
+});

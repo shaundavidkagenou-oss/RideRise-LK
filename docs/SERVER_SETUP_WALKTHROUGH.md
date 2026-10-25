@@ -180,6 +180,11 @@ In order, what actually works:
 3. **Recreate the server in another region** (Spain ↔ United States, or Bengaluru/Singapore if
    listed). A new server is scheduled onto a different node; the free tier allows this.
 4. **Do not buy extra RAM for this.** The bottleneck is the host's free capacity, not the app.
+5. **Move to a free-forever VM instead.** Oracle Cloud Always Free gives you a real Ubuntu machine
+   (2 × 1 GB AMD micro VMs, or 1 OCPU / 6 GB ARM) with 200 GB of disk and 10 TB of traffic, free
+   with no capacity lottery. One script installs Node 24, the app, systemd and HTTPS:
+   → [`FREE_HOSTING_OPTIONS.md`](FREE_HOSTING_OPTIONS.md) §2. It takes about 20 minutes and the
+   address stops being shared with anyone else's free tier.
 
 ### Meanwhile: see the zero-setup app today
 
