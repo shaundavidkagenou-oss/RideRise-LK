@@ -40,7 +40,9 @@ What happens, in order:
 6. **DEX** — `d8 --min-api 24` (release mode for the release variant).
 7. **Package** — `scripts/package_apk.py` merges `classes.dex`, zipaligns STORED entries and
    writes the unsigned APK.
-8. **Sign** — `apksigner` v1 + v2 + v3. The release keystore is created on first build at
+8. **Sign** — `apksigner` produces **v2 + v3** signatures (this toolchain does not emit v1,
+   which is unnecessary at `minSdk 24`). Check with
+   `java -jar apksigner.jar verify --verbose --print-certs <apk>`. The release keystore is created on first build at
    `android/keystore/riderise-release.keystore` with a random 32-character password stored in
    the neighbouring `KEYSTORE-CREDENTIALS.txt` (both git-ignored, mode 600).
 9. **Report** — prints the SHA-256 and compiles certificate digests.

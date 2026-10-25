@@ -71,7 +71,7 @@ Outputs:
 
 ```
 release/apk/riderise-lk-phase1-debug.apk      signed with the debug key (debuggable=true)
-release/apk/riderise-lk-phase1-release.apk    signed with the release key (v1+v2+v3)
+release/apk/riderise-lk-phase1-release.apk    signed with the release key (v2+v3)
 release/apk/SHA256SUMS.txt
 release/BUILD_INFO.md
 ```
@@ -86,7 +86,7 @@ release/BUILD_INFO.md
 5. `d8` converts class files to `classes.dex` (`--release` for the release variant).
 6. `scripts/package_apk.py` repackages with `classes.dex` and **zip-aligns** stored
    entries to 4 bytes (a local re-implementation of `zipalign`).
-7. `apksigner` signs with APK Signature Scheme v1 + v2 + v3 and prints the certificate.
+7. `apksigner` signs with APK Signature Scheme v2 + v3 and prints the certificate. (v1 is not generated at minSdk 24; Android 7.0+ verifies v2, and Android 11+ prefers v3.)
 
 ### Signing keys
 

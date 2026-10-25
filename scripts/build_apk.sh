@@ -184,7 +184,7 @@ sign_apk() {
   local variant="$1" out="$2" ks pass alias
   if [ "$variant" = "release" ]; then ks="$RELEASE_KS"; pass="$RELEASE_PASS"; alias="riderise";
   else ks="$DEBUG_KS"; pass="$DEBUG_PASS"; alias="androiddebugkey"; fi
-  log "[$variant] Signing with apksigner (v1 + v2 + v3)"
+  log "[$variant] Signing with apksigner (v2 + v3; v1 is unnecessary at minSdk 24)"
   rm -f "$out"
   "$JAVA" -jar "$TOOLS/apksigner.jar" sign \
     --ks "$ks" --ks-key-alias "$alias" --ks-pass "pass:$pass" --key-pass "pass:$pass" \

@@ -82,7 +82,7 @@ an independent static analysis (`androguard`):
 | Launcher activity | `MainActivity` (exported) | `MainActivity` (exported) |
 | Permissions | INTERNET, ACCESS_NETWORK_STATE, POST_NOTIFICATIONS | same |
 | `debuggable` | true | **false** |
-| Signature schemes | v1 + v2 + v3 | v1 + v2 + v3 |
+| Signature schemes | v2 + v3 | v2 + v3 |
 | Bundled web app | 15 asset files under `assets/webapp/` | same |
 | Zip alignment | all stored entries 4-byte aligned | same |
 | Size | 2,300,124 B | 2,304,219 B |

@@ -1,6 +1,8 @@
 # RideRise LK — APK build provenance
 
-Phase 2 build produced on **2026-10-25** from this repository with
+Rebuilt on **2026-10-25 08:08 UTC** after the final code changes (Safety Centre appeals and
+community rules, TURN honesty fix, JWT secret handling), so the bundled `assets/webapp/`
+matches the current source. Originally produced the same day with
 `scripts/build_apk.sh all` (no Android SDK or Gradle; toolchain provisions a Java runtime,
 aapt2, d8, ecj and apksigner). Verified with `apksigner verify` and `aapt2 dump badging /
 permissions`.
@@ -9,11 +11,24 @@ permissions`.
 
 | File | Size | SHA-256 |
 |---|---|---|
-| `apk/riderise-lk-phase2-debug.apk` | 2,374,741 B | `139a96da6c73da93843bd2606d090837c82dedc4a2d1b7df1128e000e54462c5` |
-| `apk/riderise-lk-phase2-release.apk` | 2,378,837 B | `983c11d5f68d5433435b43136c5170be6dba59297def849f2e62e8a09567d6f2` |
+| `apk/riderise-lk-phase2-debug.apk` | 2,374,740 B | `ab4da04f824ca6f3430fb06fd1a7559e3965b7e89e500bfc9056ad4ea40f9099` |
+| `apk/riderise-lk-phase2-release.apk` | 2,378,836 B | `b4d1841dbe2728503452840e4f82a969f74fd3e608d1e415c7f97a38974a4cd0` |
 
 Both are listed in `apk/SHA256SUMS.txt`; verify with `cd release/apk && sha256sum -c
 SHA256SUMS.txt`. The `.idsig` files are v4 signature sidecars.
+
+Signature verification actually observed on these files:
+
+```
+Verified using v1 scheme (JAR signing): false
+Verified using v2 scheme (APK Signature Scheme v2): true
+Verified using v3 scheme (APK Signature Scheme v3): true
+Signer #1 certificate DN: CN=RideRise LK, OU=Mobile, O=Shaun David Studios, L=Colombo, ST=Western, C=LK
+```
+
+v1 is not produced by this apksigner build and is not needed at `minSdk 24` — Android 7.0+
+verifies v2/v3. Any older device (Android 6 and below) cannot install this APK, which the
+manifest already prevents.
 
 ## Manifest facts (verified)
 
@@ -25,7 +40,7 @@ SHA256SUMS.txt`. The `.idsig` files are v4 signature sidecars.
 | Launcher activity | `lk.shaunstudios.riderise.MainActivity` (exported) | same |
 | `android:debuggable` | `true` | absent |
 | `android:usesCleartextTraffic` | `false` | `false` |
-| Signature schemes | v1 + v2 + v3 | v1 + v2 + v3 |
+| Signature schemes | v2 + v3 (verified) | v2 + v3 (verified) |
 | Bundled assets | `assets/webapp/` (the whole client) | same |
 | Zip alignment | 4-byte aligned STORED entries | same |
 

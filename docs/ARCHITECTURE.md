@@ -99,7 +99,7 @@ system access, no credential storage.
 
 `build_apk.sh` is a reproducible, SDK-free pipeline:
 `make_icons.py` → bundle web assets → `aapt2 compile/link` → `ecj` (Java compile) →
-`d8` (DEX) → `package_apk.py` (repackage + 4-byte zip align) → `apksigner` (v1+v2+v3) →
+`d8` (DEX) → `package_apk.py` (repackage + 4-byte zip align) → `apksigner` (v2+v3) →
 verification + SHA-256. Toolchain artifacts are cached outside the repo
 (`~/.cache/riderise-apk-tools`), keys stay in git-ignored `android/keystore/`.
 
