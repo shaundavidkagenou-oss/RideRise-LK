@@ -490,12 +490,43 @@ public class MainActivity extends Activity {
         }
     }
 
+    /**
+     * Server address compiled into this build (res/values/deployment.xml, written by
+     * scripts/build_apk.sh from config/deployment.config.json). Empty when the studio has not
+     * set one, in which case a fresh install asks the rider for an address.
+     */
+    private String builtInApiBase() {
+        String value;
+        try {
+            value = getString(R.string.default_api_base);
+        } catch (Exception e) {
+            return "";
+        }
+        if (value == null) return "";
+        value = value.trim();
+        while (value.endsWith("/")) value = value.substring(0, value.length() - 1);
+        return value;
+    }
+
     /** Minimal, whitelisted native bridge. No reflection, no file system or credential access. */
     private final class NativeBridge {
+        /**
+         * The address the app should call. A rider's own choice (SharedPreferences) wins;
+         * otherwise the address baked into the build is used, so a downloaded app is ready
+         * to register with no setup screen.
+         */
         @JavascriptInterface
         public String getApiBase() {
             SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
-            return prefs.getString(KEY_API_BASE, "");
+            String saved = prefs.getString(KEY_API_BASE, "");
+            if (saved != null && saved.trim().length() > 0) return saved.trim();
+            return builtInApiBase();
+        }
+
+        /** The address baked into this build (used by Settings to offer "reset to built-in"). */
+        @JavascriptInterface
+        public String getDefaultApiBase() {
+            return builtInApiBase();
         }
 
         @JavascriptInterface
@@ -504,6 +535,12 @@ public class MainActivity extends Activity {
             String clean = url.trim();
             if (!clean.startsWith("https://") && !clean.startsWith("http://")) return;
             getSharedPreferences(PREFS, MODE_PRIVATE).edit().putString(KEY_API_BASE, clean).apply();
+        }
+
+        /** Forget a rider's override and fall back to the address compiled into the build. */
+        @JavascriptInterface
+        public void resetApiBase() {
+            getSharedPreferences(PREFS, MODE_PRIVATE).edit().remove(KEY_API_BASE).apply();
         }
 
         @JavascriptInterface

@@ -33,6 +33,25 @@ val packageId = brandString("packageId")
 val appVersionName = brandString("versionName")
 val appVersionCode = brandInt("versionCode")
 
+/* ------------------------- built-in server address ------------------------- */
+// Same source of truth as the SDK-free pipeline (scripts/build_apk.sh): the address a rider's
+// app connects to without any setup. Set it with:
+//   npm run configure:apk -- --url https://api.yourdomain.lk
+// Empty means the app asks for an address on first launch.
+val deploymentConfigFile = rootProject.file("../config/deployment.config.json")
+val builtInApiBase: String = if (deploymentConfigFile.isFile) {
+    val deploy = JsonSlurper().parse(deploymentConfigFile) as Map<*, *>
+    (deploy["apiBaseUrl"] as? String)?.trim()?.trimEnd('/') ?: ""
+} else {
+    ""
+}
+if (builtInApiBase.isNotEmpty() && !builtInApiBase.startsWith("https://")) {
+    throw GradleException(
+        "config/deployment.config.json apiBaseUrl must start with https:// (got \"$builtInApiBase\"). " +
+            "The app blocks cleartext HTTP. Set it with: npm run configure:apk -- --url https://..."
+    )
+}
+
 /* -------------------------------- signing ---------------------------------- */
 // Reuses the release keystore created by scripts/build_apk.sh so a Gradle build can be
 // installed over an existing APK. Both the keystore and its credentials are git-ignored.
@@ -68,6 +87,8 @@ android {
         targetSdk = 34       // unchanged from the shipped SDK-free APK
         versionCode = appVersionCode
         versionName = appVersionName
+        // Compiled into the APK; MainActivity bridges it to the web layer as getApiBase().
+        resValue("string", "default_api_base", builtInApiBase)
     }
 
     sourceSets.getByName("main") {

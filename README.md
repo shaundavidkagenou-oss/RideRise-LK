@@ -77,8 +77,10 @@ Everything from Phase 1 remains, including the existing database and users.
 
 ```bash
 npm start                                  # http://localhost:3000  (SQLite created, migrated, seeded)
-npm test                                   # 92 automated tests (serial)
+npm test                                   # 103 automated tests (serial)
 npm run apk                                # rebuild signed debug + release APKs (no SDK required)
+npm run verify:server -- --url https://…   # is a hosted server ready to ship in the app?
+npm run configure:apk -- --url https://…   # compile that address into the next APK
 npm run check:android-push                 # 37 static checks of the Gradle/FCM wiring
 npm run check:fcm                          # FCM service-account validity (+ --online to call Google)
 
@@ -86,7 +88,8 @@ cp .env.example .env                       # optional integrations (Firebase aut
 node --env-file=.env backend/server.js     # run with them enabled
 ```
 
-Node.js **22.5+** is required (the backend uses the built-in `node:sqlite` module). No
+Node.js **22.13+** is required (the backend uses the built-in `node:sqlite` module, which needs the
+`--experimental-sqlite` flag on 22.5–22.12). No
 external database or paid service is needed to run it locally: with no `.env` the app starts
 fully functional and reports `push: false`, `turnRelay: false` honestly in `/api/health`.
 
@@ -156,6 +159,7 @@ tools — is enforced in the backend.
 | TURN relay for reliable voice (`TURN_URLS`, `TURN_SECRET`) | [`docs/PHASE2_VOICE_AND_MAP.md`](docs/PHASE2_VOICE_AND_MAP.md) |
 | Firebase Cloud Messaging (step by step) | [`docs/PHASE2_FIREBASE_PUSH.md`](docs/PHASE2_FIREBASE_PUSH.md) |
 | HTTPS hosting + API URL in the Android shell | [`docs/BUILD_INSTRUCTIONS.md`](docs/BUILD_INSTRUCTIONS.md) |
+| **Deploying on a hosting panel + compiling the address into the APK** | [`docs/DEPLOY_AND_BAKE.md`](docs/DEPLOY_AND_BAKE.md) |
 | Database migration and backup | [`docs/PHASE2_MIGRATION.md`](docs/PHASE2_MIGRATION.md) |
 | Admin operations | [`docs/PHASE2_ADMIN_GUIDE.md`](docs/PHASE2_ADMIN_GUIDE.md) |
 | APK build and installation walkthrough | [`docs/PHASE2_APK_BUILD.md`](docs/PHASE2_APK_BUILD.md) |

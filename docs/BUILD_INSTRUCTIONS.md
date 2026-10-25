@@ -143,17 +143,35 @@ Authorized domains → Add domain →** `appassets.androidplatform.net`. This is
 separate from the API URL — without it, sign-in fails with `auth/unauthorized-domain`.
 See [`FIREBASE_AUTH.md`](FIREBASE_AUTH.md) §6b.
 
+#### Compiling the server address into the APK (recommended)
+
+A build can carry its server address, so a rider never sees a setup screen:
+
+```bash
+npm run verify:server -- --url https://api.yourdomain.lk   # proves the address really works
+npm run configure:apk -- --url https://api.yourdomain.lk   # or add --bake to the line above
+npm run apk
+```
+
+The address becomes the string resource `default_api_base`; `MainActivity` reports it through
+`RRAndroid.getApiBase()` and the web layer only shows the setup screen when there is no address
+at all. `verify:server` checks TLS, `/api/health`, the CORS answer for the APK's own origin and
+whether sign-in is configured before anything is baked in. Full walkthrough for a hosting panel:
+[`DEPLOY_AND_BAKE.md`](DEPLOY_AND_BAKE.md).
+
 #### First run
 
-1. Splash (bundled badge), then **Connect your ride server**.
-2. Paste the HTTPS API URL → **Save & test connection** → it calls `/api/health` and reports
-   `Connected to RideRise LK · Phase 2 ✓`.
-3. Sign in or create an account with Firebase email + password (same accounts as the web build).
-4. Change the server later in **Settings → Server connection**.
+**With a built-in address:** splash → welcome/sign-in → register. No URL to type.
 
-The URL is stored in Android `SharedPreferences` and mirrored into web storage, so it survives
-restarts. With no URL configured the app shows the setup screen and an explicit error rather
-than fake data.
+**Without one** (`config/deployment.config.json` empty): splash → **Connect your ride server**
+→ paste the HTTPS API URL → **Save & test connection** (it calls `/api/health` and reports
+`Connected to RideRise LK · Phase 2 ✓`) → sign in or create an account.
+
+Either way the server address lives in Android `SharedPreferences` and is mirrored into web
+storage, so it survives restarts. With no address and no saved value the app shows the setup
+screen and an explicit error rather than fake data. Riders can change it later in
+**Settings → Server connection**, where **Use the built-in server** restores the compiled-in
+address.
 
 #### If it does not work
 

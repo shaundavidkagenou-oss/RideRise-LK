@@ -10,12 +10,27 @@ Artifacts produced by this run are already in `release/apk/` (see `release/BUILD
 
 ## 1. Prerequisites
 
-- Linux x86_64 with Python 3.11+, Node 22.5+ and network access to PyPI + npm (first run).
+- Linux x86_64 with Python 3.11+, Node 22.13+ (`node:sqlite` is flag-free from 22.13) and
+  network access to PyPI + npm (first run).
 - About 300 MB free for the toolchain cache (`~/.cache/riderise-apk-tools`).
 - Pillow (optional but recommended) so launcher icons are generated at correct sizes
   instead of a full-resolution copy: `python3 -m pip install --break-system-packages Pillow`.
 
-## 2. Build
+## 2. Choose the server address that ships with the app (optional but recommended)
+
+Empty `config/deployment.config.json` = the app asks each rider for an HTTPS URL on first launch.
+Setting it = a fresh install opens straight on the welcome/sign-in screen.
+
+```bash
+npm run verify:server -- --url https://api.yourdomain.lk   # must print "Ready"
+npm run configure:apk -- --url https://api.yourdomain.lk
+```
+
+Both build pipelines inject the value independently (`scripts/inject_api_base.py` for this
+toolchain, `resValue` in `android/app/build.gradle.kts` for Gradle) and both refuse a non-HTTPS
+address. See [`DEPLOY_AND_BAKE.md`](DEPLOY_AND_BAKE.md) for hosting and TLS.
+
+## 3. Build
 
 ```bash
 cd /home/user/RideRise-LK
@@ -56,7 +71,7 @@ release/apk/*.idsig                 (v4 signature sidecars)
 release/apk/SHA256SUMS.txt
 ```
 
-## 3. Verify the build
+## 4. Verify the build
 
 ```bash
 cd release/apk
@@ -73,7 +88,7 @@ $JAVA -jar ~/.cache/riderise-apk-tools/apksigner.jar verify --print-certs --min-
 Expected: package `lk.shaunstudios.riderise`, versionCode `2`, versionName `2.0.0`,
 minSdk 24, targetSdk 34, and the eight permissions listed in `release/BUILD_INFO.md`.
 
-## 4. Install on a device
+## 5. Install on a device
 
 1. Enable **Developer options → USB debugging** on the phone.
 2. Connect by USB and accept the RSA prompt.
@@ -88,10 +103,12 @@ minSdk 24, targetSdk 34, and the eight permissions listed in `release/BUILD_INFO
    Or copy the APK to the phone and open it (allow “Install unknown apps” for the file
    manager).
 
-4. Point it at your backend on first launch. With no server saved, the app opens **Connect
-   your ride server**: paste the API base URL and press **Save & test connection** (it calls
-   `/api/health`). The value is kept in Android `SharedPreferences`, and **Settings → Server
-   connection** changes it later.
+4. Point it at your backend. If the APK was built with a server address (§2) it is already
+   done — a fresh install opens on the welcome/sign-in screen. Otherwise, with no server saved,
+   the app opens **Connect your ride server**: paste the API base URL and press **Save & test
+   connection** (it calls `/api/health`). The value is kept in Android `SharedPreferences`, and
+   **Settings → Server connection** changes it later (**Use the built-in server** restores a
+   compiled-in address).
 
    The URL **must be HTTPS**. `android:usesCleartextTraffic="false"` plus mixed-content
    blocking from the virtual `https://appassets.androidplatform.net` origin means
@@ -103,7 +120,7 @@ minSdk 24, targetSdk 34, and the eight permissions listed in `release/BUILD_INFO
 
    and use the printed `https://…` host. For real use, deploy behind HTTPS.
 
-## 5. On-device checks that matter
+## 6. On-device checks that matter
 
 | Check | Expected |
 |---|---|
@@ -123,7 +140,7 @@ minSdk 24, targetSdk 34, and the eight permissions listed in `release/BUILD_INFO
 Anything you cannot test must stay on the “not verified” list in
 `docs/PHASE2_TEST_RESULTS.md`.
 
-## 6. Update the version
+## 7. Update the version
 
 Edit `config/brand.config.json`:
 
@@ -134,7 +151,7 @@ Edit `config/brand.config.json`:
 Play requires a strictly increasing `versionCode`. Rebuild, re-verify and keep the same
 signing keystore.
 
-## 7. Firebase project settings for the installed app
+## 8. Firebase project settings for the installed app
 
 1. **Authentication → Settings → Authorized domains → Add domain →**
    `appassets.androidplatform.net`. The bundled UI is served from that virtual HTTPS origin,
@@ -146,7 +163,7 @@ signing keystore.
    is needed for sign-in. The release **SHA-1** (`98ec4c24…`) is only relevant if you later add
    Play App Signing, Android App Links or another Google service.
 
-## 8. Publishing notes (APK vs AAB)
+## 9. Publishing notes (APK vs AAB)
 
 - This pipeline emits an **APK** only. Google Play has required **Android App Bundles (AAB)**
   for new apps and updates since August 2021.
@@ -157,7 +174,7 @@ signing keystore.
   messages, device ids), content rating, and target API compliance. Review the current
   requirement page before submitting; requirements change annually.
 
-## 9. Troubleshooting
+## 10. Troubleshooting
 
 | Symptom | Cause / fix |
 |---|---|

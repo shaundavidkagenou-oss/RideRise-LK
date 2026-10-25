@@ -1037,10 +1037,21 @@
           window.RR.isAndroidShell()
             ? `<section class="card">
                 <h3>Server connection</h3>
-                <p class="muted" style="font-size:.84rem">This Android build talks to the RideRise LK backend API. Enter your deployed API URL (for example <code>https://riderise-api.yourdomain.lk</code>).</p>
+                <p class="muted" style="font-size:.84rem">${
+                  state.apiBaseBuiltIn
+                    ? `This app connects to <strong>${escapeHtml(state.apiBaseBuiltIn)}</strong>. You only need to change it if the studio moves the server.`
+                    : 'This Android build talks to the RideRise LK backend API. Enter your deployed API URL (for example <code>https://riderise-api.yourdomain.lk</code>).'
+                }</p>
                 <div class="form-group"><label class="form-label" for="apiBaseInput">API base URL</label>
                   <input class="form-input" id="apiBaseInput" value="${escapeHtml(state.apiBase || '')}" placeholder="https://your-riderise-api.example" /></div>
-                <button class="btn btn-primary btn-sm" id="saveApiBase">Save &amp; test connection</button>
+                <div class="bike-actions">
+                  <button class="btn btn-primary btn-sm" id="saveApiBase">Save &amp; test connection</button>
+                  ${
+                    state.apiBaseBuiltIn && state.apiBase !== state.apiBaseBuiltIn
+                      ? '<button class="btn btn-secondary btn-sm" id="resetApiBase">Use the built-in server</button>'
+                      : ''
+                  }
+                </div>
                 <div id="apiTestResult" class="hint"></div>
               </section>`
             : ''
@@ -1137,6 +1148,16 @@
           } catch (e) {
             toast('Notification bridge unavailable in this build.', 'error');
           }
+        });
+
+      const apiReset = viewport.querySelector('#resetApiBase');
+      if (apiReset)
+        apiReset.addEventListener('click', () => {
+          if (window.RRAndroid && window.RRAndroid.resetApiBase) window.RRAndroid.resetApiBase();
+          localStorage.removeItem(window.RR.STORAGE_API_BASE);
+          state.apiBase = state.apiBaseBuiltIn;
+          toast(`Using the built-in server ${state.apiBaseBuiltIn}.`, 'success');
+          renderSettings(viewport);
         });
 
       const apiSave = viewport.querySelector('#saveApiBase');

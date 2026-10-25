@@ -88,13 +88,26 @@ find "$BUILD/assets/webapp" -name '*.map' -delete
 du -sh "$BUILD/assets/webapp"
 
 # ---------------------------------------------------------------------------
+# 2b. Server address compiled into the app (config/deployment.config.json)
+#
+# Set it with:  npm run configure:apk -- --url https://api.example.lk
+# With an address, a fresh install goes straight to the welcome screen. Without one the app
+# asks the rider for an address. The value becomes the string resource `default_api_base`,
+# which MainActivity bridges to the web layer as RRAndroid.getApiBase().
+# ---------------------------------------------------------------------------
+log "Preparing resources and the built-in server address"
+RES_SRC="$BUILD/res"
+rm -rf "$RES_SRC" && cp -R "$ROOT/android/res" "$RES_SRC"
+python3 "$ROOT/scripts/inject_api_base.py" "$ROOT" "$RES_SRC"
+
+# ---------------------------------------------------------------------------
 # 3. AAPT2 compile + link
 # ---------------------------------------------------------------------------
 compile_and_link() {
   local variant="$1" debuggable="$2" manifest="$BUILD/AndroidManifest-$1.xml"
   log "[$variant] Compiling resources"
   rm -rf "$BUILD/compiled-$variant.zip" "$BUILD/gen-$variant" "$BUILD/base-$variant.apk"
-  "$AAPT2" compile --dir "$ROOT/android/res" -o "$BUILD/compiled-$variant.zip"
+  "$AAPT2" compile --dir "$RES_SRC" -o "$BUILD/compiled-$variant.zip"
 
   python3 - "$ROOT" "$manifest" "$VERSION_CODE" "$VERSION_NAME" "$debuggable" <<'PY'
 import sys, pathlib

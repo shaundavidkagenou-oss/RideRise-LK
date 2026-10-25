@@ -31,7 +31,11 @@ def main() -> int:
     try:
         from PIL import Image
     except ImportError:
-        print("Pillow not available — copying the badge as the launcher icon instead")
+        print(
+            "Pillow not available — copying the full-size badge as the launcher icon at every density.\n"
+            "  The APK will be several MB larger and the icon will be scaled by Android.\n"
+            "  Fix it once with:  python3 -m pip install pillow   (then rebuild)"
+        )
         for folder in SIZES:
             d = os.path.join(RES, folder)
             os.makedirs(d, exist_ok=True)

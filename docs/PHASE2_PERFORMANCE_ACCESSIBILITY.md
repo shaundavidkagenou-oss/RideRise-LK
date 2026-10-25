@@ -130,4 +130,4 @@ keep the Node layer as the fallback.
 - Data usage per hour of map sharing or voice.
 - Load tests beyond seeded data.
 
-These belong in the pre-launch device test pass described in `PHASE2_APK_BUILD.md` §5.
+These belong in the pre-launch device test pass described in `PHASE2_APK_BUILD.md` §6.

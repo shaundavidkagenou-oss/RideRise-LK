@@ -10,6 +10,20 @@
 
   const isAndroidShell = () => typeof window.RRAndroid !== 'undefined' && !!window.RRAndroid;
 
+  /**
+   * The server address compiled into this APK (build-time, not editable by a rider). Empty
+   * when the studio did not bake one in, in which case a fresh install asks for an address.
+   */
+  function builtInApiBase() {
+    if (!isAndroidShell()) return '';
+    try {
+      const bridged = window.RRAndroid.getDefaultApiBase ? window.RRAndroid.getDefaultApiBase() : '';
+      return (bridged || '').replace(/\/$/, '');
+    } catch (e) {
+      return '';
+    }
+  }
+
   function resolveApiBase() {
     if (isAndroidShell()) {
       try {
@@ -27,6 +41,8 @@
   const state = {
     token: localStorage.getItem(STORAGE_TOKEN) || '',
     apiBase: resolveApiBase(),
+    // Set only by an APK built with a server address; Settings uses it to offer "reset".
+    apiBaseBuiltIn: builtInApiBase(),
     account: null,
     profile: null,
     config: null,

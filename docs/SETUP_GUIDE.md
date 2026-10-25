@@ -129,6 +129,12 @@ riderise.example.com {
 
 Back up `riderise_lk.sqlite` (plus `-wal`/`-shm`) on a schedule — it is the whole database.
 
+> **Hosting on a game/app panel (Pterodactyl, Enzonic, Pelican…) instead of a VPS?**
+> Follow [`DEPLOY_AND_BAKE.md`](DEPLOY_AND_BAKE.md) — it covers the panel's allocated port, the
+> Node 22.13+ requirement, a `.env` template, three ways to get a real HTTPS address without
+> opening ports, and how to compile that address into the APK so riders never type a URL.
+
+
 **Prove it worked**
 
 ```bash
@@ -417,8 +423,10 @@ installed one.
 
 First run in the APK:
 
-1. It asks for the server address — paste the **HTTPS** URL from step 2. It is stored on the
-   device (Settings → Server Connection to change it).
+1. Server address: a build made with `npm run configure:apk -- --url <address>` (§
+   [`DEPLOY_AND_BAKE.md`](DEPLOY_AND_BAKE.md)) already knows it and goes straight to sign-in.
+   An unconfigured build asks once — paste the **HTTPS** URL from step 2. Either way it is stored
+   on the device (Settings → Server Connection to change it).
 2. Sign in with a real email/password account created in the app (or on the web build).
 3. Grant microphone when you join a voice room, location only when you press **Start sharing**,
    notifications when the app asks (Android 13+).
