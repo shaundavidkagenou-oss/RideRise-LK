@@ -157,7 +157,59 @@ terminates HTTPS for `rideriselk.enzonic.dev` and forwards to port 25941.
 
 ---
 
-## 7. Then I make the app zero-setup
+## 7. If Start says **Insufficient node RAM capacity**
+
+This one is not your configuration, and nothing in the app can cause or fix it. The message comes
+from the host's scheduler *before* the container is created: the physical machine your server
+sits on has no free memory to reserve the 512 MB the plan promises. Enzonic's own site says
+provisioning "depends on available capacity", and the free runtime tier is exactly the one that
+fills up first.
+
+In order, what actually works:
+
+1. **Press Start again in a few minutes.** Other free servers stop and capacity frees up. This is
+   the most common fix.
+2. **Ask support to start it on a node with capacity — or to lower the memory limit.** The app is
+   not what needs 512 MB: measured on Node 22.22 with an empty database it sits at **60 MB RSS**
+   (61 MB after a request), so 256 MB is plenty. Paste this into a ticket:
+   > Server: RideRise-LK-Backend · UUID de0c86d1-acd2-473f-9091-97d4a1d97e5f · region …
+   >
+   > Clicking Start returns "Insufficient node RAM capacity". The plan allocates 512 MB
+   > (SERVER_MEMORY=512). The workload is a Node.js API that idles at ~60 MB RSS. Could you start
+   > it on a node with free capacity, or lower the memory limit to 256 MB and retry?
+3. **Recreate the server in another region** (Spain ↔ United States, or Bengaluru/Singapore if
+   listed). A new server is scheduled onto a different node; the free tier allows this.
+4. **Do not buy extra RAM for this.** The bottleneck is the host's free capacity, not the app.
+
+### Meanwhile: see the zero-setup app today
+
+You already run the backend on your own computer, so you can put a temporary HTTPS address in
+front of it and build a test APK, without waiting for the panel:
+
+```bash
+# terminal 1 - your server, exactly as now
+npm start
+
+# terminal 2 - a throwaway HTTPS address, no account needed
+cloudflared tunnel --url http://localhost:3000     # prints https://<random>.trycloudflare.com
+```
+
+Then:
+
+```bash
+npm run verify:server -- --url https://<that-host>
+npm run configure:apk -- --url https://<that-host>
+npm run apk
+```
+
+The APK installs and goes straight to the sign-in screen. Two honest caveats: the address dies
+when your computer sleeps or the tunnel restarts, and the next start gives a **new** random
+address — so that build is for testing on your own phone, not for riders. Riders need an
+always-on host with a stable address, which is the panel (or any small VPS) once it has capacity.
+
+---
+
+## 8. Then I make the app zero-setup
 
 Send me:
 
@@ -178,7 +230,7 @@ npm run apk
 
 ---
 
-## 8. Living with it
+## 9. Living with it
 
 - **Restarts are safe.** `backend/riderise_lk.sqlite` lives inside the server folder; turn on the
   panel's **Backups**.
