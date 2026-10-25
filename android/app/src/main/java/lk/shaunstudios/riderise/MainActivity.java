@@ -433,7 +433,7 @@ public class MainActivity extends Activity {
         @JavascriptInterface
         public String getPlatformInfo() {
             return "{\"platform\":\"android\",\"sdk\":" + Build.VERSION.SDK_INT
-                    + ",\"versionName\":\"" + BuildConfigVersion.NAME + "\"}";
+                    + ",\"versionName\":\"" + appVersionName() + "\"}";
         }
 
         @JavascriptInterface
@@ -445,9 +445,13 @@ public class MainActivity extends Activity {
         }
     }
 
-    /** Version metadata mirrored into Java (kept in sync by scripts/build_apk.sh). */
-    static final class BuildConfigVersion {
-        static final String NAME = "1.0.0";
+    /** Version name straight from the installed package, so it can never drift from the build. */
+    private String appVersionName() {
+        try {
+            return getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
+        } catch (Exception e) {
+            return "unknown";
+        }
     }
 
     @Override

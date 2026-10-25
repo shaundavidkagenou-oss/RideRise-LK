@@ -74,7 +74,7 @@ module.exports = function registerAdmin(ctx) {
         '\n[RideRise LK] Admin bootstrap credential created.\n' +
           `  username: ${username}\n  password: ${defaultPass}\n` +
           '  This development default is public in the project brief and is REFUSED in production.\n' +
-          '  Change it from Studio Console → Security before any real deployment.\n'
+          '  Change it from Studio Console → 🔑 Password before any real deployment.\n'
       );
     } else {
       console.warn(`[RideRise LK] Admin bootstrap account "${username}" created. ${note} The password is not printed here.`);
@@ -248,7 +248,7 @@ module.exports = function registerAdmin(ctx) {
         recent: log,
         note: status.configured
           ? 'FCM HTTP v1 is configured. Real delivery attempts are logged below.'
-          : `Push is not configured: ${status.reason}. In-app notifications still work. Follow docs/PHASE2_FIREBASE_SETUP.md.`
+          : `Push is not configured: ${status.reason}. In-app notifications still work. Follow docs/SETUP_GUIDE.md step 5.`
       }), true;
     }
 

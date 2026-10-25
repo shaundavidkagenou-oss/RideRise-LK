@@ -17,7 +17,7 @@ events, the tutorial CMS, catalogue verification, broadcast and the audit trail.
      printed once in the server log and change it at first sign-in.
    - **Google** — sign in with the studio Google account whose `users_private.role` is
      `admin` or `moderator`.
-3. **Studio Console → Security → Change password** before inviting real riders. The demo
+3. **Studio Console → 🔑 Password** before inviting real riders. The demo
    credential is published in the project brief, so anyone who can reach the server knows it.
 
 Password rules: minimum 12 characters, not the bootstrap value, stored in the studio

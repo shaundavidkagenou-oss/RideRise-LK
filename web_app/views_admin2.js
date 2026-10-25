@@ -54,6 +54,7 @@
         </div>
         <div style="display:flex;gap:6px;flex-wrap:wrap">
           <button class="btn btn-secondary btn-sm" id="adminHome">← App home</button>
+          <button class="btn btn-secondary btn-sm" id="adminSecurity">🔑 Password</button>
           <button class="btn btn-secondary btn-sm" id="adminLegacy">Classic console</button>
         </div>
       </div>
@@ -72,6 +73,7 @@
     viewport.querySelector('#adminLegacy').addEventListener('click', () => (location.hash = '#/admin/legacy'));
     if (viewport.querySelector('#forceChange')) {
       viewport.querySelector('#forceChange').addEventListener('click', () => changePasswordModal(true));
+      viewport.querySelector('#adminSecurity').addEventListener('click', () => changePasswordModal(false));
     }
     viewport.querySelectorAll('[data-admin-tab]').forEach((chip) =>
       chip.addEventListener('click', () => {

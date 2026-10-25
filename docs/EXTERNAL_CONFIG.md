@@ -11,6 +11,11 @@ describes exactly what stops working until you add a credential, and how to add 
 
 ---
 
+**New here?** [`docs/SETUP_GUIDE.md`](SETUP_GUIDE.md) walks through all of this in order, with a
+verification step after each integration. This file is the reference: what each service
+provides, what it costs and what stops working without it. `npm run check:setup` prints which
+pieces your current environment already has.
+
 ## 0. Quick reference
 
 | Integration | Accounts / credentials | Typical cost | What it unlocks | What happens without it |
@@ -243,7 +248,7 @@ curl -s localhost:3000/api/voice/ice | python3 -m json.tool      # iceServers or
 ```
 
 Then sign in as the studio admin (`admin$123$` on a fresh database; production requires
-`ADMIN_USERNAME`/`ADMIN_PASSWORD` alongside `JWT_SECRET`), open **Studio Console → Security**
+`ADMIN_USERNAME`/`ADMIN_PASSWORD` alongside `JWT_SECRET`), open **Studio Console → 🔑 Password**
 and change the password before inviting real users. `npm run probe:admin` (against a
 throwaway database) re-checks the credential's moderation and rider abilities.
 

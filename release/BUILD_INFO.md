@@ -1,8 +1,8 @@
 # RideRise LK — APK build provenance
 
-Rebuilt on **2026-10-25 08:08 UTC** after the final code changes (Safety Centre appeals and
-community rules, TURN honesty fix, JWT secret handling), so the bundled `assets/webapp/`
-matches the current source. Originally produced the same day with
+Rebuilt on **2026-10-25 08:18 UTC** after the setup-hardening pass (Google client id published
+through `/api/config`, push-token bridge, version name read from the package, admin password
+control), so the bundled `assets/webapp/` matches the current source. Originally produced the same day with
 `scripts/build_apk.sh all` (no Android SDK or Gradle; toolchain provisions a Java runtime,
 aapt2, d8, ecj and apksigner). Verified with `apksigner verify` and `aapt2 dump badging /
 permissions`.
@@ -11,8 +11,8 @@ permissions`.
 
 | File | Size | SHA-256 |
 |---|---|---|
-| `apk/riderise-lk-phase2-debug.apk` | 2,374,740 B | `ab4da04f824ca6f3430fb06fd1a7559e3965b7e89e500bfc9056ad4ea40f9099` |
-| `apk/riderise-lk-phase2-release.apk` | 2,378,836 B | `b4d1841dbe2728503452840e4f82a969f74fd3e608d1e415c7f97a38974a4cd0` |
+| `apk/riderise-lk-phase2-debug.apk` | 2,374,741 B | `e5d4fd13bda3cfeaa07ecf696f87e81fb24119e8e6e58bbd864bcf7184de1dfb` |
+| `apk/riderise-lk-phase2-release.apk` | 2,378,837 B | `a2e80ddf8adcd429016c2625051f271acde08e86c155076cf735a5b84945f86e` |
 
 Both are listed in `apk/SHA256SUMS.txt`; verify with `cd release/apk && sha256sum -c
 SHA256SUMS.txt`. The `.idsig` files are v4 signature sidecars.

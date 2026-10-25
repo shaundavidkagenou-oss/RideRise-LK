@@ -561,7 +561,16 @@ const server = http.createServer(async (req, res) => {
         brand: brandConfig,
         ranks,
         legalDocuments: legalDocs,
-        draftSafetyNotice: DRAFT_SAFETY_NOTICE_VERBATIM
+        draftSafetyNotice: DRAFT_SAFETY_NOTICE_VERBATIM,
+        // Public browser client id only (never a secret). Empty means the sandbox
+        // sign-in bridge is in use instead of Google Identity Services.
+        googleClientId: GOOGLE_CLIENT_ID,
+        capabilities: {
+          googleSignIn: Boolean(GOOGLE_CLIENT_ID),
+          push: pushSender.status().configured,
+          turnRelay: Boolean(process.env.TURN_URLS || process.env.TURN_URL),
+          mapProvider: process.env.MAP_PROVIDER || 'openstreetmap'
+        }
       });
     }
 

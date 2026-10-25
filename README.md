@@ -16,7 +16,7 @@ Lankan BMX and freestyle riders, built for **Shaun David Studios**.
 | **Minimum age** | 16 (16–17 gets youth-safety defaults) |
 | **Languages** | English · සිංහල · தமிழ் (localisation architecture in place) |
 | **APKs** | `release/apk/riderise-lk-phase2-debug.apk`, `…-release.apk` (signed) |
-| **Tests** | 50 automated tests + 106 Phase 2 API assertions + 36 admin capability checks — all passing |
+| **Tests** | 51 automated tests + 106 Phase 2 API assertions + 36 admin capability checks — all passing |
 
 ---
 
@@ -62,9 +62,14 @@ Everything from Phase 1 remains, including the existing database and users.
 
 ## 2. Run it in 60 seconds
 
+> **Setting this up for real use?** Follow **[`docs/SETUP_GUIDE.md`](docs/SETUP_GUIDE.md)** — an
+> ordered walkthrough for hosting, Google sign-in, Firebase push, TURN voice, APK install and
+> Play publishing, with a verification step after each one.
+> `npm run check:setup` tells you exactly what is still missing.
+
 ```bash
 npm start                                  # http://localhost:3000  (SQLite created, migrated, seeded)
-npm test                                   # 50 automated tests (serial)
+npm test                                   # 51 automated tests (serial)
 npm run apk                                # rebuild signed debug + release APKs (no SDK required)
 
 cp .env.example .env                       # optional integrations (map, TURN, FCM, Google)
@@ -98,7 +103,7 @@ in as the seeded studio administrator profile `nethmi_sds`).
 This is a **development** credential and works exactly as written on a fresh database. It is
 refused when `NODE_ENV=production`: set `ADMIN_USERNAME`/`ADMIN_PASSWORD` there, or use the
 random password printed once in the server log and change it at first sign-in. You can change
-it at any time in **Studio Console → Security**; change it before any real deployment.
+it at any time in **Studio Console → 🔑 Password**; change it before any real deployment.
 
 ---
 
@@ -196,6 +201,7 @@ something to check, never a guarantee.
 - [`docs/PHASE2_TEST_RESULTS.md`](docs/PHASE2_TEST_RESULTS.md) — automated and manual results
 - [`docs/PHASE2_PERFORMANCE_ACCESSIBILITY.md`](docs/PHASE2_PERFORMANCE_ACCESSIBILITY.md) — performance and a11y audit
 - [`docs/PHASE2_APK_BUILD.md`](docs/PHASE2_APK_BUILD.md) — compile, sign, install, Play notes
+- [`docs/SETUP_GUIDE.md`](docs/SETUP_GUIDE.md) — **start here**: ordered setup walkthrough + verification
 - [`docs/EXTERNAL_CONFIG.md`](docs/EXTERNAL_CONFIG.md) — every third-party account, key, fee and limit
 - Phase 1: [architecture](docs/ARCHITECTURE.md) · [database](docs/DATABASE_SCHEMA.md) ·
   [safety & moderation](docs/SAFETY_AND_MODERATION.md) · [admin guide](docs/ADMIN_GUIDE.md) ·

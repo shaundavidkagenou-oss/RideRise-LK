@@ -1174,3 +1174,15 @@ test('31. Voice ICE config never claims a relay that is not configured', async (
   }
   assert.equal(ice.json.recording, false, 'voice must never record by default');
 });
+
+test('32. Public config advertises integrations without leaking secrets', async () => {
+  const res = await call('/api/config');
+  assert.equal(res.status, 200);
+  assert.equal(typeof res.json.googleClientId, 'string', 'clients need to know whether Google sign-in is on');
+  assert.equal(res.json.googleClientId, '', 'no Google client id is configured in the test environment');
+  assert.equal(res.json.capabilities.googleSignIn, false);
+  assert.equal(typeof res.json.capabilities.push, 'boolean');
+  assert.equal(typeof res.json.capabilities.turnRelay, 'boolean');
+  const raw = JSON.stringify(res.json);
+  assert.ok(!/JWT_SECRET|private_key|service_account/i.test(raw), 'public config must never contain server secrets');
+});

@@ -16,3 +16,7 @@ __pycache__/
 *.jks
 KEYSTORE-CREDENTIALS.txt
 .env
+
+# Firebase project config (per-project identifiers / Android API key)
+google-services.json
+android/app/google-services.json

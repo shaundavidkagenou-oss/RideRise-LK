@@ -16,6 +16,7 @@
     "test:api": "node --test tests/api.test.js",
     "test:ui": "node --test --test-concurrency=1 tests/ui.smoke.test.js tests/ui.flows.test.js tests/ui.phase2.test.js",
     "probe:admin": "node scripts/probe_admin.js",
+    "check:setup": "node scripts/check_setup.js",
     "apk": "bash scripts/build_apk.sh all",
     "apk:debug": "bash scripts/build_apk.sh debug",
     "apk:release": "bash scripts/build_apk.sh release"

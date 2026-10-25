@@ -6,7 +6,7 @@ sandbox, **no physical Android device and no emulator**.
 Reproduce everything:
 
 ```bash
-npm test                       # 50 node:test tests (Phase 1 + Phase 2 UI), run serially
+npm test                       # 51 node:test tests (Phase 1 + Phase 2 UI), run serially
 npm run probe:admin            # 36-check studio-admin capability probe (needs PROBE_BASE)
 ```
 
@@ -20,14 +20,14 @@ jsdom environments exhaust a 4 GB sandbox.
 
 | Suite | Result |
 |---|---|
-| `tests/api.test.js` — Phase 1 API contract | **31 / 31 pass** |
+| `tests/api.test.js` — Phase 1 API contract | **32 / 32 pass** |
 | `tests/ui.smoke.test.js` — shell, routes, onboarding | **4 / 4 pass** |
 | `tests/ui.flows.test.js` — real user journeys | **8 / 8 pass** |
 | `tests/ui.phase2.test.js` — Phase 2 screens | **7 / 7 pass** |
 | Phase 2 probe harness — 106 assertions | **106 / 106 pass, 0 failed** |
 | `scripts/probe_admin.js` — admin capability probe | **36 / 36 pass, 0 failed** |
 
-Total: **50 automated tests + 106 API behaviour assertions + 36 admin capability checks.**
+Total: **51 automated tests + 106 API behaviour assertions + 36 admin capability checks.**
 
 `tests/api.test.js` also pins two honesty rules as regressions: `/api/voice/ice` must never
 say a TURN relay is configured when none is (`turn_available` is derived from the servers it

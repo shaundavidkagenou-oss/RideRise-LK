@@ -1,0 +1,32 @@
+{
+  "//": "TEMPLATE ONLY — replace with the real file downloaded from Firebase Console.",
+  "//2": "Console → Project settings → Your apps → Android app 'lk.shaunstudios.riderise' → google-services.json.",
+  "//3": "Place the real file at app/google-services.json. It is git-ignored; never commit it.",
+  "project_info": {
+    "project_number": "000000000000",
+    "project_id": "your-firebase-project-id",
+    "storage_bucket": "your-firebase-project-id.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:000000000000:android:0000000000000000000000",
+        "android_client_info": {
+          "package_name": "lk.shaunstudios.riderise"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "REPLACE_WITH_THE_REAL_ANDROID_API_KEY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -313,9 +313,12 @@
     wireShell();
     paintChrome();
 
-    // Load public config once (branding, ranks, legal docs)
+    // Load public config once (branding, ranks, legal docs, Google client id)
     try {
       state.config = await RR.api('/api/config');
+      if (state.config && state.config.googleClientId) {
+        window.RR_GOOGLE_CLIENT_ID = state.config.googleClientId;
+      }
     } catch (e) {
       /* App still works; screens that need config will retry. */
     }
@@ -326,6 +329,7 @@
       } catch (err) {
         /* keep token; screens will surface the network error with retry */
       }
+      registerPushToken();
     }
 
     if (!location.hash) location.hash = state.token ? '#/home' : '#/welcome';
@@ -350,6 +354,35 @@
           })
           .catch(() => {});
       }, 60000);
+    }
+  }
+
+  /**
+   * Native push registration. Only the Gradle build (with Firebase Messaging) implements the
+   * bridge; the SDK-free APK and the web build simply skip this. The native side fetches an
+   * FCM token and hands it back through window.RR.onPushToken.
+   */
+  window.RR.onPushToken = async function (token) {
+    if (!token || !state.token) return;
+    try {
+      await RR.api('/api/devices', {
+        method: 'POST',
+        body: { token, platform: 'android', app_version: (state.config && state.config.brand && state.config.brand.versionName) || '' }
+      });
+      if (window.RRAndroid && window.RRAndroid.requestNotificationPermission) {
+        window.RRAndroid.requestNotificationPermission();
+      }
+    } catch (err) {
+      /* Push is optional: a failure here must never block the app. */
+    }
+  };
+
+  function registerPushToken() {
+    if (!window.RRAndroid || !window.RRAndroid.requestPushToken) return;
+    try {
+      window.RRAndroid.requestPushToken();
+    } catch (err) {
+      /* bridge present but unavailable */
     }
   }
 
