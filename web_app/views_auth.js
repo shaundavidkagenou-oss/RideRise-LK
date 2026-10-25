@@ -48,6 +48,11 @@
     }
 
     const demoEnabled = Boolean(state.config && state.config.demoSignInEnabled);
+    // The Firebase SDK runs in this browser, but the SERVER must reach Google to verify the
+    // resulting ID token. A blocked egress route is a server problem, so say so up front
+    // instead of letting it look like a wrong password.
+    const firebaseServer = state.config && state.config.firebase ? state.config.firebase : null;
+    const verifierBlocked = Boolean(firebaseServer && firebaseServer.verifier && firebaseServer.verifier.status === 'unreachable');
     viewport.innerHTML = `
       <section class="welcome-hero">
         <div class="welcome-badge-glow">${logo(196, 'welcome-badge')}</div>
@@ -58,6 +63,20 @@
           <p class="welcome-sub">A community, learning and bike-build platform for Sri Lankan bicycle stunt riders — built by <strong>Shaun David Studios</strong>.</p>
 
           <div class="auth-card" id="authCard">
+            ${
+              verifierBlocked
+                ? `<div class="auth-notice auth-notice-error" role="alert">
+                     <strong>This server cannot reach Google to verify sign-ins right now.</strong>
+                     <p>Firebase Authentication is configured for project <code>${escapeHtml(firebaseServer.projectId || '')}</code>,
+                     but this host has no outbound access to Google's token-verification endpoint
+                     (<code>www.googleapis.com</code>). Creating an account here would still register it in
+                     Firebase, yet the session could not be confirmed.</p>
+                     <p>Run the app on a machine or host with normal internet access (the Windows/Chrome
+                     setup in <code>docs/FIREBASE_AUTH.md</code>), then sign in there. Nothing about your
+                     email address or password is wrong.</p>
+                   </div>`
+                : ''
+            }
             <div class="auth-tabs" role="tablist" aria-label="Sign in or create an account">
               <button type="button" role="tab" class="auth-tab" data-auth-tab="signin" aria-selected="${authMode === 'signin'}">Sign in</button>
               <button type="button" role="tab" class="auth-tab" data-auth-tab="signup" aria-selected="${authMode === 'signup'}">Create account</button>

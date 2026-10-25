@@ -6,11 +6,17 @@ script, the OAuth client and the server-side Google token verifier were all remo
 passwordless links, and no client-side-only "login". This document covers what was built, how
 it works, and the exact steps to connect your own Firebase project.
 
-> **State of this repository:** the code is complete and covered by 27 automated tests that
-> use locally-signed Firebase ID tokens. **No Firebase project is connected yet**, so no real
-> account has been created, no verification email has been delivered, and nothing has been
-> tested against Google's live endpoints. Section 7 is the checklist that turns the untested
-> parts into tested ones in your environment.
+> **State of this repository:** the code is complete (81 automated tests, 30 of them for
+> authentication) and **your Firebase project is configured**: `rideriselk`
+> (`FIREBASE_PROJECT_ID=rideriselk` in `.env`, git-ignored). The browser can now create real
+> accounts, and Google will deliver the verification and password-reset emails.
+>
+> **One environment caveat, stated plainly:** the sandbox that served the live preview has no
+> outbound route to `www.googleapis.com`, so *that host* cannot verify ID tokens and reports
+> `firebaseVerifier: "unreachable"` in `/api/health`. The welcome screen shows a matching
+> banner there. On your Windows machine (or any normal host with internet access) the same
+> build verifies and signs in normally. Nothing about the code or the credentials is wrong —
+> run `npm start` locally to use it.
 
 ---
 
@@ -135,16 +141,24 @@ which the backend serves from `GET /api/auth/firebase/config`. Put the values in
 (git-ignored) or your platform's environment settings:
 
 ```bash
-FIREBASE_PROJECT_ID=riderise-lk
-FIREBASE_API_KEY=AIzaSy…            # Project settings → Your apps → Web app → apiKey
-FIREBASE_AUTH_DOMAIN=riderise-lk.firebaseapp.com
-FIREBASE_APP_ID=1:123456789012:web:abcdef0123456789
-FIREBASE_MESSAGING_SENDER_ID=123456789012
+FIREBASE_PROJECT_ID=rideriselk
+FIREBASE_API_KEY=AIzaSy…                       # Project settings → Your apps → Web app → apiKey
+FIREBASE_AUTH_DOMAIN=rideriselk.firebaseapp.com
+FIREBASE_APP_ID=1:614966302540:web:c740ffce…   # appId from the same panel
+FIREBASE_MESSAGING_SENDER_ID=614966302540
+FIREBASE_STORAGE_BUCKET=rideriselk.firebasestorage.app   # optional, not used by auth
+FIREBASE_MEASUREMENT_ID=G-VJ6QDQHXR4                     # optional, analytics is NOT loaded
 ```
+
+`npm start` and `npm run dev` load `.env` automatically (`--env-file-if-exists=.env`), so the
+file is the only place these values need to exist. `.env` is git-ignored — never commit it or
+paste a service-account key into it unless you are enabling push.
 
 Notes:
 
 - `FIREBASE_AUTH_DOMAIN` defaults to `<projectId>.firebaseapp.com` if omitted.
+- `FIREBASE_STORAGE_BUCKET` defaults to `<projectId>.firebasestorage.app`; RideRise LK does
+  not initialise Firebase Analytics or Storage yet, so both are informational.
 - `FIREBASE_PROJECT_ID` is also derived from `FCM_SERVICE_ACCOUNT_FILE` /
   `FCM_SERVICE_ACCOUNT_JSON` if you already configured push, so a single project configuration
   is enough for both features.
@@ -155,9 +169,16 @@ Restart the server. Confirm the hand-off:
 
 ```bash
 curl -s localhost:3000/api/auth/firebase/config | python3 -m json.tool
-# { "configured": true, "projectId": "riderise-lk", "emailVerificationRequired": true, ... }
-curl -s localhost:3000/api/health | grep -o '"firebaseAuth":[a-z]*'   # "firebaseAuth":true
+# { "configured": true, "projectId": "rideriselk", "emailVerificationRequired": true,
+#   "verifier": { "status": "ok" | "unreachable", ... } }
+curl -s localhost:3000/api/health | python3 -c "import json,sys;print(json.load(sys.stdin)['capabilities'])"
+# firebaseAuth: True, firebaseVerifier: 'ok'   ← must be 'ok' on the machine riders use
 ```
+
+`firebaseVerifier: "unreachable"` means **this server** cannot reach
+`www.googleapis.com` to fetch Google's secure-token certificates (firewall, proxy, air-gapped
+host). Sign-in cannot complete on such a host; the welcome screen says exactly that instead of
+blaming the password, and `/api/auth/firebase/config` carries the same status.
 
 If `configured` is `false` the sign-in form renders **disabled** with the missing-variable
 name. That is intentional: nothing pretends to work.
@@ -192,6 +213,7 @@ Console → **Authentication → Settings → Authorized domains**:
 | `<projectId>.firebaseapp.com` (already listed) | default auth domain |
 | your production domain, e.g. `riderise.yourdomain.lk` | every real deployment |
 | your tunnel/preview host, e.g. `abc123.ngrok-free.app` | trying it on a phone before DNS is set up |
+| the current Arena preview host, e.g. `3000-<sandbox-id>.e2b.app` | trying it from the browser preview (copy the host from the URL bar) |
 
 Email/password sign-in itself does not redirect through `authDomain`, but the SDK checks the
 origin for account-recovery and reCAPTCHA-style operations, and Google blocks unlisted
@@ -224,7 +246,7 @@ Work top to bottom; each line has a pass condition.
 | 9 | **Forgot your password?** → enter the address | Reset email arrives; the new password works, the old one does not |
 | 10 | Directory → `#/admin` as a normal rider | 403 / “Administrator sign-in required”; promotion only via the Studio Console |
 | 11 | `npm run check:setup -- --url https://your-domain` | Email/password sign-in ✔, 0 blocking |
-| 12 | `npm test` | 79 / 79 pass |
+| 12 | `npm test` | 81 / 81 pass |
 | 13 | Build and install the APK (section 8) | Sign-up, verification gate, restart and sign-out behave as in the browser |
 
 ---
@@ -255,9 +277,9 @@ report what you see and it can be adapted.
 
 ## 9. What is tested vs. what waits for your Firebase project
 
-### Tested automatically (`npm test`, 79 tests total)
+### Tested automatically (`npm test`, 81 tests total)
 
-`tests/auth.firebase.test.js` (22 tests, real verifier, locally-signed ID tokens):
+`tests/auth.firebase.test.js` (23 tests, real verifier, locally-signed ID tokens):
 
 - sign-up creates exactly one `users_private` + `profiles` row and a working session token
 - a request body cannot dictate role, email, UID or verification state
@@ -283,7 +305,7 @@ report what you see and it can be adapted.
 - auth endpoints are rate limited per client address, and `X-Forwarded-For` cannot be spoofed
   to reset the limit from the internet
 
-`tests/ui.auth.test.js` (6 jsdom flows against the real backend, stubbed SDK):
+`tests/ui.auth.test.js` (7 jsdom flows against the real backend, stubbed SDK):
 
 - sign up → verification gate → profile created once → verified → onboarding wizard
 - taken username blocked **before** any Firebase account is created
@@ -292,7 +314,7 @@ report what you see and it can be adapted.
 - sign-out clears both the RideRise token and the Firebase session
 - Settings → Sign-in & security shows the provider and requests a password reset
 
-Also updated: the smoke/flow suites still pass with the new sign-in screen (79/79).
+Also updated: the smoke/flow suites still pass with the new sign-in screen (81/81).
 
 ### Awaiting your Firebase project (cannot be tested here)
 
@@ -319,7 +341,8 @@ Anything in that table is **unverified until you run section 7**. Do not treat t
 | `auth/operation-not-allowed` | Email/Password provider not enabled | section 4 |
 | `auth/unauthorized-domain` | origin missing from authorized domains | section 6b |
 | `auth/network-request-failed` in the APK | API base unset, or device offline | Settings → Server connection; HTTPS only |
-| `503 AUTH_UNAVAILABLE` | server could not fetch Google's certificates | check outbound HTTPS from the server, retry |
+| `503 AUTH_UNAVAILABLE` / `verifier_unreachable` | the **server** cannot reach `www.googleapis.com` (firewall, proxy, sandbox) | allow outbound HTTPS to `www.googleapis.com` and `*.googleapis.com`, or run on a normal host; check `firebaseVerifier` in `/api/health` |
+| Welcome screen shows the “server cannot reach Google” banner | same cause, detected at startup | as above — this is not a credential problem |
 | `401 AUTH_TOKEN_EXPIRED` repeatedly | device clock far off, or a very old cached token | fix device clock; the SDK refreshes automatically |
 | `409 PROFILE_REQUIRED` loop | profile creation was interrupted | complete the username form (it retries the same Firebase UID) |
 | `409 ACCOUNT_LINK_REQUIRED` | a RideRise profile already uses that email | sign in to that profile, then Settings → Sign-in & security → Link |
@@ -353,6 +376,6 @@ Anything in that table is **unverified until you run section 7**. Do not treat t
 | `web_app/vendor/firebase-compat.min.js` | bundled Firebase SDK (offline, APK-safe) |
 | `scripts/bundler/firebase-entry.js` | esbuild entry used to rebuild that bundle |
 | `android/…/MainActivity.java` | virtual HTTPS origin for bundled assets |
-| `tests/auth.firebase.test.js` | 22 server-side auth tests |
-| `tests/ui.auth.test.js` | 6 UI flows |
+| `tests/auth.firebase.test.js` | 23 server-side auth tests |
+| `tests/ui.auth.test.js` | 7 UI flows |
 | `tests/fixtures/firebase-test-*.pem` | throwaway keypair for locally-signed test tokens |

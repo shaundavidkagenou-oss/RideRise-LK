@@ -56,7 +56,7 @@ from the brief; it also works from Studio Console → Sign in).
 
 ```bash
 curl -s localhost:3000/api/health | python3 -m json.tool     # "phase": 2
-npm test                                                     # 79 tests, 79 pass
+npm test                                                     # 81 tests, 81 pass
 ```
 
 ---
@@ -178,7 +178,10 @@ checklist live in **`docs/FIREBASE_AUTH.md`**; this is the short version.
 | Web app config (`apiKey`, `authDomain`, `appId`…) | the client SDK in every build | public identifiers — not secrets |
 | `FIREBASE_PROJECT_ID` | the server's ID-token verifier | nothing else; Google's public certificates are fetched automatically |
 
-**Steps**
+**Current status: configured.** The project is `rideriselk`, and `.env` (git-ignored) already
+holds its public web config; `npm start` loads it automatically.
+
+**Steps (done once, kept here for reference or a second deployment)**
 
 1. <https://console.firebase.google.com/> → **Add project** (Analytics optional).
 2. **Project settings → Your apps → Add app → Web** (`</>`). Copy the `firebaseConfig` values.
@@ -187,15 +190,18 @@ checklist live in **`docs/FIREBASE_AUTH.md`**; this is the short version.
 4. Add to `.env` (or your platform's environment) and restart:
 
    ```bash
-   FIREBASE_PROJECT_ID=riderise-lk
+   FIREBASE_PROJECT_ID=rideriselk
    FIREBASE_API_KEY=AIzaSy…                       # public web API key
-   FIREBASE_AUTH_DOMAIN=riderise-lk.firebaseapp.com
-   FIREBASE_APP_ID=1:123456789012:web:abcdef0123456789
-   FIREBASE_MESSAGING_SENDER_ID=123456789012
+   FIREBASE_AUTH_DOMAIN=rideriselk.firebaseapp.com
+   FIREBASE_APP_ID=1:614966302540:web:c740ffce0246b5098b61e9
+   FIREBASE_MESSAGING_SENDER_ID=614966302540
+   # optional: FIREBASE_STORAGE_BUCKET, FIREBASE_MEASUREMENT_ID
    ```
 
    `FIREBASE_PROJECT_ID` is also picked up from `FCM_SERVICE_ACCOUNT_FILE`/`_JSON` if you
    already set up push, so one project covers both.
+
+   `npm start` / `npm run dev` read `.env` automatically (`--env-file-if-exists`).
 
 5. **Authentication → Settings → Authorized domains**: add your production domain (and any
    tunnel host you test with). `localhost` is already there.
@@ -204,9 +210,15 @@ checklist live in **`docs/FIREBASE_AUTH.md`**; this is the short version.
 7. Prove it works:
 
    ```bash
-   curl -s localhost:3000/api/auth/firebase/config | python3 -m json.tool   # "configured": true
+   curl -s localhost:3000/api/auth/firebase/config | python3 -m json.tool
+   #   "configured": true, "projectId": "rideriselk", "verifier": { "status": "ok" }
    npm run check:setup                                                     # sign-in ✔
    ```
+
+   `verifier.status` **must be `ok`**. If it says `unreachable`, that host cannot reach
+   `www.googleapis.com` (firewall/proxy/offline), so tokens cannot be verified there — the
+   welcome screen says so instead of blaming the password. Allow outbound HTTPS to
+   `www.googleapis.com` (and `*.googleapis.com`) or run on a normal machine.
 
    Then in the browser: create an account, open the verification email, press
    **I’ve verified my email**, sign out, sign in again — and check that closing the browser and
@@ -419,7 +431,7 @@ you own the replacement; keep the aspect ratio.
 | Feature | Check | Expected |
 |---|---|---|
 | Health | `curl /api/health` | `phase: 2`, capability flags match reality |
-| Tests | `npm test` | 79 / 79 pass |
+| Tests | `npm test` | 81 / 81 pass |
 | Admin | `npm run probe:admin` (throwaway DB) | 36 checks pass |
 | Setup | `npm run check:setup -- --url …` | 0 blocking |
 | Sign-in | browser at your domain | email/password form enabled when the Firebase vars are set; verification gate before the app opens |
@@ -472,6 +484,6 @@ Firebase or tile endpoints. So: no APK was ever installed or launched, no push w
 no call was carried between two phones, and no real Firebase account, verification email or
 password reset has been exercised against Google's servers. The Firebase ID-token verifier *is*
 tested — with locally-signed tokens that follow Google's claim contract
-(`tests/auth.firebase.test.js`, 22 tests; 6 more UI flows in `tests/ui.auth.test.js`) — but live
+(`tests/auth.firebase.test.js`, 23 tests; 7 more UI flows in `tests/ui.auth.test.js`) — but live
 x509 fetching and mail delivery require your project. Every step above ends with a verification
 you can run in your own environment — use them, and treat anything unverified as unverified.

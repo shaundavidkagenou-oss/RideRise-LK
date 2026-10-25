@@ -731,6 +731,40 @@ test('FB 22 — Google sign-in is fully removed from the app and the server', as
   }
 });
 
+test('FB 23 — a blocked certificate endpoint is reported as a server problem, not a bad password', async () => {
+  const id = newIdentity('egress');
+  const token = mintToken({ uid: id.uid, email: id.email });
+
+  // Simulate what a firewall / air-gapped host produces: the provider cannot reach Google.
+  firebaseAuth.__setCertificateProvider(() => {
+    throw Object.assign(new Error('getaddrinfo ENOTFOUND www.googleapis.com'), { code: 'CERT_FETCH_FAILED' });
+  });
+  let res;
+  try {
+    res = await call('/api/auth/firebase/session', { method: 'POST', body: { idToken: token } });
+  } finally {
+    // Restore the working fixture provider for the remaining tests.
+    firebaseAuth.__setCertificateProvider(() => ({ certs: { [KID]: certPem }, ttlMs: 60 * 60 * 1000 }));
+  }
+
+  assert.equal(res.status, 503);
+  assert.equal(res.json.error, 'AUTH_UNAVAILABLE');
+  assert.equal(res.json.retryable, true);
+  assert.equal(res.json.verifier_unreachable, true);
+  assert.match(res.json.message, /server network\/egress problem/i);
+  assert.doesNotMatch(res.json.message, /password (is|was) (incorrect|wrong)/i);
+  assert.equal(res.json.token, undefined);
+
+  const health = await call('/api/health');
+  assert.equal(health.json.capabilities.firebaseVerifier, 'unreachable');
+
+  // With the certificate source healthy again, the same token signs in normally.
+  const recovered = await call('/api/auth/firebase/signup', { method: 'POST', body: { idToken: token, username: id.username } });
+  assert.equal(recovered.status, 200);
+  const healthAfter = await call('/api/health');
+  assert.equal(healthAfter.json.capabilities.firebaseVerifier, 'ok');
+});
+
 test('FB 19 — demo sign-in cannot mint a Firebase-linked or admin identity', async () => {
   // The legacy demo bridge must never hand out a role from the request body.
   const spoof = await call('/api/auth/demo', {

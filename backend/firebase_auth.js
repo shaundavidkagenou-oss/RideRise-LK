@@ -44,10 +44,26 @@ function createVerifier({ projectId, certProvider, now = () => Date.now() }) {
   let cache = { certs: null, expiresAt: 0, source: '' };
 
   async function defaultCertProvider() {
-    const res = await fetch(CERT_URL, { signal: AbortSignal.timeout(8000) });
-    if (!res.ok) throw new FirebaseAuthError('CERT_FETCH_FAILED', `Secure-token certificates unavailable (HTTP ${res.status}).`);
-    const body = await res.json();
-    return { certs: body, ttlMs: parseMaxAge(res.headers.get('cache-control')) };
+    let res;
+    try {
+      res = await fetch(CERT_URL, { signal: AbortSignal.timeout(8000) });
+    } catch (err) {
+      // DNS failure, blocked egress, TLS error, timeout: the server could not reach Google.
+      // This is NOT a bad token, and must never be reported as one.
+      throw new FirebaseAuthError(
+        'CERT_FETCH_FAILED',
+        `The Google secure-token certificate endpoint could not be reached from this server (${err.message || 'network error'}).`
+      );
+    }
+    if (!res.ok) {
+      throw new FirebaseAuthError('CERT_FETCH_FAILED', `Secure-token certificates unavailable (HTTP ${res.status}).`);
+    }
+    try {
+      const body = await res.json();
+      return { certs: body, ttlMs: parseMaxAge(res.headers.get('cache-control')) };
+    } catch {
+      throw new FirebaseAuthError('CERT_FETCH_FAILED', 'The secure-token certificate response could not be read.');
+    }
   }
 
   async function getCert(kid) {
@@ -151,9 +167,30 @@ function createVerifier({ projectId, certProvider, now = () => Date.now() }) {
     };
   }
 
+  /**
+   * Pre-warm the certificate cache and report whether Google's secure-token endpoint is
+   * reachable from this host. Used at startup and after a verification failure so the health
+   * endpoint can distinguish "not configured" from "configured, but the server has no egress".
+   */
+  async function probeCertificates() {
+    if (!projectId) return { reachable: false, error: 'FIREBASE_NOT_CONFIGURED' };
+    if (certProvider) return { reachable: true, source: 'injected' };
+    if (cache.certs && cache.expiresAt > now()) {
+      return { reachable: true, keys: Object.keys(cache.certs).length, source: cache.source, cached: true };
+    }
+    try {
+      const fetched = await defaultCertProvider();
+      cache = { certs: fetched.certs, expiresAt: now() + fetched.ttlMs, source: 'google' };
+      return { reachable: true, keys: Object.keys(fetched.certs || {}).length, source: 'google' };
+    } catch (err) {
+      return { reachable: false, error: err.code || err.message || 'CERT_FETCH_FAILED', source: 'google' };
+    }
+  }
+
   return {
     projectId,
     verifyIdToken,
+    probeCertificates,
     /** Test seam: replace the certificate source. Never used in production paths. */
     __setCertificateProvider(provider) {
       certProvider = provider;
@@ -202,6 +239,8 @@ function readFirebaseEnv(env = process.env) {
   const appId = (env.FIREBASE_APP_ID || '').trim();
   const messagingSenderId = (env.FIREBASE_MESSAGING_SENDER_ID || '').trim();
   const measurementId = (env.FIREBASE_MEASUREMENT_ID || '').trim();
+  const storageBucket =
+    (env.FIREBASE_STORAGE_BUCKET || '').trim() || (projectId ? `${projectId}.firebasestorage.app` : '');
 
   return {
     projectId,
@@ -214,6 +253,7 @@ function readFirebaseEnv(env = process.env) {
       projectId,
       appId,
       messagingSenderId,
+      storageBucket,
       measurementId
     }
   };
@@ -250,6 +290,7 @@ function createFirebaseAuth(options = {}) {
       };
     },
     verifyIdToken: verifier.verifyIdToken,
+    probeCertificates: verifier.probeCertificates,
     __setCertificateProvider: verifier.__setCertificateProvider,
     __clearCache: verifier.__clearCache,
     __cacheInfo: verifier.__cacheInfo

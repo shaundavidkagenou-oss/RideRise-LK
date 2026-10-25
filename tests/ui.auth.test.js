@@ -145,7 +145,7 @@ function makeSdk() {
   return { sdk, state };
 }
 
-async function bootApp({ token = null, mock = null } = {}) {
+async function bootApp({ token = null, mock = null, patchConfig = null } = {}) {
   const errors = [];
   const virtualConsole = new VirtualConsole();
   virtualConsole.on('jsdomError', (err) => {
@@ -161,7 +161,19 @@ async function bootApp({ token = null, mock = null } = {}) {
     beforeParse(window) {
       if (token) window.localStorage.setItem('rr_token', token);
       window.__RR_FIREBASE__ = sdk;
-      window.fetch = (input, init) => fetch(new URL(input, baseUrl).toString(), init);
+      window.fetch = async (input, init) => {
+        const url = new URL(input, baseUrl).toString();
+        const response = await fetch(url, init);
+        if (patchConfig && url.endsWith('/api/config')) {
+          const data = await response.clone().json();
+          patchConfig(data);
+          return new Response(JSON.stringify(data), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
+        return response;
+      };
       window.AbortController = AbortController;
       window.scrollTo = () => {};
       window.HTMLElement.prototype.scrollIntoView = () => {};
@@ -424,6 +436,30 @@ test('UI AUTH 6 — settings shows the signed-in provider and offers a password 
     click(window, document.getElementById('sendResetBtn'));
     await waitFor(() => mock.state.resetEmails.length === 1, 10000, 'reset email request');
     assert.equal(mock.state.resetEmails[0], email);
+  } finally {
+    window.close();
+  }
+});
+
+test('UI AUTH 7 — a server that cannot reach Google says so instead of blaming the password', async () => {
+  const mock = makeSdk();
+  const { window, document } = await bootApp({
+    mock,
+    patchConfig(data) {
+      // Simulates a firewall / air-gapped host: configured project, unreachable verifier.
+      data.firebase.verifier = { status: 'unreachable', detail: 'CERT_FETCH_FAILED' };
+    }
+  });
+  try {
+    await waitFor(() => document.querySelector('.auth-notice-error'), 15000, 'verifier banner');
+    const banner = document.querySelector('.auth-notice-error');
+    assert.match(banner.textContent, /cannot reach Google to verify sign-ins/i);
+    assert.match(banner.textContent, /riderise-lk-test/, 'the banner names the project');
+    assert.match(banner.textContent, /not a problem with|Nothing about your/i);
+
+    // The form still renders — the failure is the server's network, not the rider's account.
+    assert.ok(document.getElementById('signInForm'), 'sign-in form stays available');
+    assert.equal(document.querySelector('fieldset[disabled]'), null, 'the form is not disabled by a server egress issue');
   } finally {
     window.close();
   }

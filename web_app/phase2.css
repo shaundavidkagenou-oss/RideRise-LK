@@ -497,3 +497,10 @@ body.high-contrast .notif-row { border-color: rgba(255, 255, 255, .5); }
 .btn-block { display: block; width: 100%; }
 .verify-badge { font-size: 2.4rem; margin-bottom: 6px; }
 .verify-actions { display: grid; gap: 10px; }
+
+.auth-notice-error {
+  background: rgba(255, 91, 91, 0.12);
+  border-color: rgba(255, 91, 91, 0.45);
+  margin-bottom: 14px;
+}
+.auth-notice-error strong { color: #ffc9c9; }

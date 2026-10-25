@@ -16,7 +16,7 @@ Lankan BMX and freestyle riders, built for **Shaun David Studios**.
 | **Minimum age** | 16 (16–17 gets youth-safety defaults) |
 | **Languages** | English · සිංහල · தமிழ் (localisation architecture in place) |
 | **APKs** | `release/apk/riderise-lk-phase2-debug.apk`, `…-release.apk` (signed) |
-| **Tests** | 79 automated tests (including 28 Firebase-auth tests) + 106 Phase 2 API assertions + 36 admin capability checks — all passing |
+| **Tests** | 81 automated tests (including 30 Firebase-auth tests) + 106 Phase 2 API assertions + 36 admin capability checks — all passing |
 
 ---
 
@@ -76,7 +76,7 @@ Everything from Phase 1 remains, including the existing database and users.
 
 ```bash
 npm start                                  # http://localhost:3000  (SQLite created, migrated, seeded)
-npm test                                   # 79 automated tests (serial)
+npm test                                   # 81 automated tests (serial)
 npm run apk                                # rebuild signed debug + release APKs (no SDK required)
 
 cp .env.example .env                       # optional integrations (Firebase auth, map, TURN, FCM)

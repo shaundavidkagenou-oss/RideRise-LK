@@ -128,6 +128,34 @@ if (firebaseAuth.configured) {
   );
 }
 
+// Reachability of Google's secure-token certificate endpoint, as observed from this host.
+// 'unknown' until the first probe/verification; surfaced by /api/health so an operator can
+// tell a blocked egress route apart from a credential problem.
+let firebaseVerifierState = { status: firebaseAuth.projectId ? 'unknown' : 'not-configured', checkedAt: null };
+function markVerifierReachable(reachable, detail) {
+  firebaseVerifierState = {
+    status: reachable ? 'ok' : 'unreachable',
+    detail: detail || null,
+    checkedAt: new Date().toISOString()
+  };
+}
+let verifierProbedAt = 0;
+async function refreshVerifierState(force = false) {
+  if (!firebaseAuth.projectId) return firebaseVerifierState;
+  if (!force && Date.now() - verifierProbedAt < 60000) return firebaseVerifierState;
+  verifierProbedAt = Date.now();
+  try {
+    const probe = await firebaseAuth.probeCertificates();
+    markVerifierReachable(probe.reachable, probe.error || null);
+  } catch (err) {
+    markVerifierReachable(false, err.code || 'CERT_FETCH_FAILED');
+  }
+  return firebaseVerifierState;
+}
+if (firebaseAuth.projectId) {
+  refreshVerifierState(true).catch(() => {});
+}
+
 // Demo/sandbox sign-in remains available for the bundled demo accounts, but it is refused in
 // production unless an operator explicitly opts in with ALLOW_DEMO_SIGNIN=1.
 const ALLOW_DEMO_SIGNIN =
@@ -357,6 +385,24 @@ function createProfileForFirebaseIdentity(identity, username, displayNameInput) 
   return db.prepare('SELECT * FROM users_private WHERE id = ?').get(userId);
 }
 
+/**
+ * Single entry point for ID-token verification: keeps the health endpoint's view of Google
+ * reachability in sync with what actually happened, so an operator can see a blocked egress
+ * route instead of a wall of 401s.
+ */
+async function verifyFirebaseToken(idToken) {
+  try {
+    const identity = await firebaseAuth.verifyIdToken(idToken);
+    if (firebaseVerifierState.status !== 'ok') markVerifierReachable(true);
+    return identity;
+  } catch (err) {
+    if (err && (err.code === 'CERT_FETCH_FAILED' || err.code === 'CERT_INVALID')) {
+      markVerifierReachable(false, err.code);
+    }
+    throw err;
+  }
+}
+
 function sendFirebaseAuthError(res, err) {
   const code = err && err.code ? err.code : 'AUTH_TOKEN_INVALID';
   if (code === 'FIREBASE_NOT_CONFIGURED') {
@@ -367,10 +413,14 @@ function sendFirebaseAuthError(res, err) {
     });
   }
   if (code === 'CERT_FETCH_FAILED' || code === 'CERT_INVALID') {
+    markVerifierReachable(false, code);
     return sendJson(res, 503, {
       error: 'AUTH_UNAVAILABLE',
-      message: 'The Google identity service could not be reached to verify your session. Check the server connection and try again.',
-      retryable: true
+      verifier_unreachable: true,
+      retryable: true,
+      message:
+        'This server could not reach Google to verify the Firebase session. That is a server network/egress problem (firewall, proxy or an offline host), not a problem with your email or password. Your Firebase account may already exist — retry once the server can reach Google, or sign in from a deployment that can.',
+      docs: 'docs/FIREBASE_AUTH.md#troubleshooting'
     });
   }
   if (code === 'TOKEN_EXPIRED') {
@@ -778,6 +828,7 @@ const server = http.createServer(async (req, res) => {
           guildVoice: true,
           walkieTalkie: true,
           firebaseAuth: firebaseAuth.configured,
+          firebaseVerifier: firebaseVerifierState.status,
           demoSignIn: ALLOW_DEMO_SIGNIN,
           push: pushSender.status().configured,
           turnRelay: Boolean(process.env.TURN_URLS || process.env.TURN_URL)
@@ -795,7 +846,10 @@ const server = http.createServer(async (req, res) => {
         legalDocuments: legalDocs,
         draftSafetyNotice: DRAFT_SAFETY_NOTICE_VERBATIM,
         // Firebase web config (public identifiers) + demo-signin availability. No secrets.
-        firebase: firebaseAuth.webConfig(),
+        // `verifier` carries the cached reachability of Google's certificate endpoint so the
+        // welcome screen can explain a blocked server-side egress route instead of failing
+        // later as if the password were wrong.
+        firebase: { ...firebaseAuth.webConfig(), verifier: firebaseVerifierState },
         demoSignInEnabled: ALLOW_DEMO_SIGNIN,
         capabilities: {
           emailPasswordSignIn: firebaseAuth.configured,
@@ -818,7 +872,18 @@ const server = http.createServer(async (req, res) => {
     // token and the database.
     // =========================================================================
     if (pathname === '/api/auth/firebase/config' && req.method === 'GET') {
-      return sendJson(res, 200, firebaseAuth.webConfig());
+      const webConfig = firebaseAuth.webConfig();
+      // Tell the client whether THIS server can currently reach Google's certificate endpoint.
+      // A blocked egress route must not look like a wrong password.
+      const verifier = await refreshVerifierState(false);
+      return sendJson(res, 200, {
+        ...webConfig,
+        verifier: {
+          status: verifier.status,
+          checkedAt: verifier.checkedAt,
+          detail: verifier.detail || null
+        }
+      });
     }
 
     if (pathname === '/api/auth/username-available' && req.method === 'GET') {
@@ -859,7 +924,7 @@ const server = http.createServer(async (req, res) => {
       const body = await readJsonBody(req);
       let identity;
       try {
-        identity = await firebaseAuth.verifyIdToken(body.idToken);
+        identity = await verifyFirebaseToken(body.idToken);
       } catch (err) {
         recordAuthEvent(db, { event: 'firebase_session', outcome: 'failure', detail: err.code || err.message, ip });
         return sendFirebaseAuthError(res, err);
@@ -898,7 +963,7 @@ const server = http.createServer(async (req, res) => {
       const body = await readJsonBody(req);
       let identity;
       try {
-        identity = await firebaseAuth.verifyIdToken(body.idToken);
+        identity = await verifyFirebaseToken(body.idToken);
       } catch (err) {
         recordAuthEvent(db, { event: 'firebase_signup', outcome: 'failure', detail: err.code || err.message, ip });
         return sendFirebaseAuthError(res, err);
@@ -972,7 +1037,7 @@ const server = http.createServer(async (req, res) => {
       const body = await readJsonBody(req);
       let identity;
       try {
-        identity = await firebaseAuth.verifyIdToken(body.idToken);
+        identity = await verifyFirebaseToken(body.idToken);
       } catch (err) {
         return sendFirebaseAuthError(res, err);
       }

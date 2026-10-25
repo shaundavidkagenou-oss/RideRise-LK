@@ -3,17 +3,17 @@
 Run date: 2026-10-25 · Node 22.22.3 · SQLite (`node:sqlite`) · jsdom 30 · Linux x86_64
 sandbox, **no physical Android device and no emulator**.
 
-> **Update — Firebase email/password authentication.** 28 new tests were added after this
-> Phase 2 snapshot: `tests/auth.firebase.test.js` (22 server-side tests with locally-signed ID
-> tokens) and `tests/ui.auth.test.js` (6 end-to-end UI flows). Google sign-in was removed. The
-> suite is now **79/79**.
+> **Update — Firebase email/password authentication.** 30 new tests were added after this
+> Phase 2 snapshot: `tests/auth.firebase.test.js` (23 server-side tests with locally-signed ID
+> tokens) and `tests/ui.auth.test.js` (7 end-to-end UI flows). Google sign-in was removed. The
+> suite is now **81/81**.
 > Results and the tested-vs-awaiting-configuration split are in
 > [`FIREBASE_AUTH.md`](FIREBASE_AUTH.md) §9.
 
 Reproduce everything:
 
 ```bash
-npm test                       # 79 node:test tests (Phase 1 + Phase 2 UI + Firebase auth), serially
+npm test                       # 81 node:test tests (Phase 1 + Phase 2 UI + Firebase auth), serially
 npm run probe:admin            # 36-check studio-admin capability probe (needs PROBE_BASE)
 ```
 

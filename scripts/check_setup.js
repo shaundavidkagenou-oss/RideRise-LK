@@ -302,6 +302,28 @@ async function probe() {
     const fb = config.firebase || {};
     if (fb.configured) {
       ok('  Email/password sign-in', `project "${fb.projectId}" is serving a browser config`);
+      let verifier = (fb.verifier && fb.verifier.status) || 'unknown';
+      if (verifier === 'unknown') {
+        // /api/config stays cheap; the live probe lives on the auth config endpoint.
+        try {
+          const authCfg = await fetch(`${probeUrl}/api/auth/firebase/config`, { signal: AbortSignal.timeout(8000) });
+          const authJson = await authCfg.json();
+          verifier = (authJson.verifier && authJson.verifier.status) || 'unknown';
+        } catch {
+          /* leave as unknown */
+        }
+      }
+      if (verifier === 'ok') {
+        ok('  Token verifier', 'this deployment can reach Google to verify ID tokens');
+      } else {
+        warn(
+          '  Token verifier',
+          verifier === 'unreachable'
+            ? 'this deployment cannot reach www.googleapis.com, so sign-ins cannot be verified here'
+            : 'status unknown until the first sign-in',
+          'Allow outbound HTTPS to www.googleapis.com / *.googleapis.com, or run on a host with internet access.'
+        );
+      }
     } else {
       warn(
         '  Email/password sign-in',
