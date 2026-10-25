@@ -16,7 +16,7 @@ Lankan BMX and freestyle riders, built for **Shaun David Studios**.
 | **Minimum age** | 16 (16–17 gets youth-safety defaults) |
 | **Languages** | English · සිංහල · தமிழ் (localisation architecture in place) |
 | **APKs** | `release/apk/riderise-lk-phase2-debug.apk`, `…-release.apk` (signed) |
-| **Tests** | 48 automated tests + 106 Phase 2 API assertions — all passing |
+| **Tests** | 50 automated tests + 106 Phase 2 API assertions + 36 admin capability checks — all passing |
 
 ---
 
@@ -63,13 +63,17 @@ Everything from Phase 1 remains, including the existing database and users.
 ## 2. Run it in 60 seconds
 
 ```bash
-npm start                 # http://localhost:3000  (SQLite created, migrated and seeded)
-npm test                  # 48 automated tests
-npm run apk               # rebuild signed debug + release APKs (no SDK required)
+npm start                                  # http://localhost:3000  (SQLite created, migrated, seeded)
+npm test                                   # 50 automated tests (serial)
+npm run apk                                # rebuild signed debug + release APKs (no SDK required)
+
+cp .env.example .env                       # optional integrations (map, TURN, FCM, Google)
+node --env-file=.env backend/server.js     # run with them enabled
 ```
 
 Node.js **22.5+** is required (the backend uses the built-in `node:sqlite` module). No
-external database or paid service is needed to run it locally.
+external database or paid service is needed to run it locally: with no `.env` the app starts
+fully functional and reports `push: false`, `turnRelay: false` honestly in `/api/health`.
 
 ### Demo rider accounts (sandbox Google sign-in)
 
@@ -88,10 +92,13 @@ The brief requires a working studio administrator account:
 - **password:** `admin$123$`
 
 It can monitor and ban accounts, delete messages, receive all reports and feedback, publish
-news and official events, and do everything an ordinary rider can do. The first sign-in
-forces a password change, and every moderation action is blocked until it is changed. In
-production (`NODE_ENV=production`) the development default is refused and a random password
-is generated once in the server log unless `ADMIN_USERNAME`/`ADMIN_PASSWORD` are set.
+news and official events, and do everything an ordinary rider can do (the credential signs
+in as the seeded studio administrator profile `nethmi_sds`).
+
+This is a **development** credential and works exactly as written on a fresh database. It is
+refused when `NODE_ENV=production`: set `ADMIN_USERNAME`/`ADMIN_PASSWORD` there, or use the
+random password printed once in the server log and change it at first sign-in. You can change
+it at any time in **Studio Console → Security**; change it before any real deployment.
 
 ---
 
@@ -129,6 +136,7 @@ tools — is enforced in the backend.
 | Admin operations | [`docs/PHASE2_ADMIN_GUIDE.md`](docs/PHASE2_ADMIN_GUIDE.md) |
 | APK build and installation walkthrough | [`docs/PHASE2_APK_BUILD.md`](docs/PHASE2_APK_BUILD.md) |
 | Security and privacy review | [`docs/PHASE2_SECURITY_AND_PRIVACY.md`](docs/PHASE2_SECURITY_AND_PRIVACY.md) |
+| **All third-party accounts, fees, quotas and limits** | [`docs/EXTERNAL_CONFIG.md`](docs/EXTERNAL_CONFIG.md) |
 
 ---
 
@@ -188,6 +196,7 @@ something to check, never a guarantee.
 - [`docs/PHASE2_TEST_RESULTS.md`](docs/PHASE2_TEST_RESULTS.md) — automated and manual results
 - [`docs/PHASE2_PERFORMANCE_ACCESSIBILITY.md`](docs/PHASE2_PERFORMANCE_ACCESSIBILITY.md) — performance and a11y audit
 - [`docs/PHASE2_APK_BUILD.md`](docs/PHASE2_APK_BUILD.md) — compile, sign, install, Play notes
+- [`docs/EXTERNAL_CONFIG.md`](docs/EXTERNAL_CONFIG.md) — every third-party account, key, fee and limit
 - Phase 1: [architecture](docs/ARCHITECTURE.md) · [database](docs/DATABASE_SCHEMA.md) ·
   [safety & moderation](docs/SAFETY_AND_MODERATION.md) · [admin guide](docs/ADMIN_GUIDE.md) ·
   [build instructions](docs/BUILD_INSTRUCTIONS.md)

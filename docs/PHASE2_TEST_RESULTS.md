@@ -6,9 +6,13 @@ sandbox, **no physical Android device and no emulator**.
 Reproduce everything:
 
 ```bash
-npm test                       # 48 node:test tests (Phase 1 + Phase 2 UI)
-PORT=3123 DB_PATH=/tmp/rr-probe.sqlite node /tmp/probe.js   # harness (not committed)
+npm test                       # 50 node:test tests (Phase 1 + Phase 2 UI), run serially
+npm run probe:admin            # 36-check studio-admin capability probe (needs PROBE_BASE)
 ```
+
+The suites bind their own ephemeral ports and their own `/tmp` databases, so they can run
+alongside a dev server. They are executed with `--test-concurrency=1` because four concurrent
+jsdom environments exhaust a 4 GB sandbox.
 
 ---
 
@@ -16,13 +20,18 @@ PORT=3123 DB_PATH=/tmp/rr-probe.sqlite node /tmp/probe.js   # harness (not commi
 
 | Suite | Result |
 |---|---|
-| `tests/api.test.js` — Phase 1 API contract | **30 / 30 pass** |
+| `tests/api.test.js` — Phase 1 API contract | **31 / 31 pass** |
 | `tests/ui.smoke.test.js` — shell, routes, onboarding | **4 / 4 pass** |
 | `tests/ui.flows.test.js` — real user journeys | **8 / 8 pass** |
-| `tests/ui.phase2.test.js` — Phase 2 screens | **6 / 6 pass** |
+| `tests/ui.phase2.test.js` — Phase 2 screens | **7 / 7 pass** |
 | Phase 2 probe harness — 106 assertions | **106 / 106 pass, 0 failed** |
+| `scripts/probe_admin.js` — admin capability probe | **36 / 36 pass, 0 failed** |
 
-Total: **48 automated tests + 106 API behaviour assertions.**
+Total: **50 automated tests + 106 API behaviour assertions + 36 admin capability checks.**
+
+`tests/api.test.js` also pins two honesty rules as regressions: `/api/voice/ice` must never
+say a TURN relay is configured when none is (`turn_available` is derived from the servers it
+actually returns), and voice keeps `recording: false` by default.
 
 ### What the Phase 2 probe exercises
 
@@ -47,11 +56,30 @@ Total: **48 automated tests + 106 API behaviour assertions.**
 - **Events** — calendar filters, registration, capacity + waiting list, cancel, check-in
   timestamp only, official badge admin-only, feature-on-home admin-only, announcement and
   reminder fan-out.
-- **Studio console** — credential login, lockout after repeated failures, forced password
-  change, moderator email masking, news publish/unpublish, feedback triage, broadcast,
+- **Studio console** — credential login, lockout after repeated failures, password change
+  and re-login, moderator email masking, news publish/unpublish, feedback triage, broadcast,
   ban/unban/restore, report resolution, appeal resolution, audit trail.
 - **Security negatives** — suspended token rejected on unrelated endpoints, rider denied
   admin APIs, anonymous writes rejected, unknown guild 404, map config requires auth.
+
+### What the admin capability probe exercises (`npm run probe:admin`)
+
+Run against a throwaway database so its bans and posts never touch real data.
+
+- `admin$123$` signs in with no forced password change, `role: admin`, resolves to
+  `nethmi_sds`, and loads the moderation overview.
+- **As an ordinary rider** — publishes a feed post, likes and comments, lists guilds, reads
+  the 21-module stunt library, opens the five learning pathways, opens events and registers,
+  searches the catalogue, reads community rules.
+- **Messaging** — a rider messages the admin; the admin deletes the message and the sender
+  sees a tombstone, not the body.
+- **Moderation** — search accounts, ban (the banned rider's existing session is terminated on
+  the next request), unban, temporary suspension, restore, report queue + resolution,
+  feedback inbox.
+- **Publishing** — studio news, an official studio event flagged `is_official_studio_event`,
+  a broadcast, and an audit trail containing the actions.
+- **Honesty + isolation** — `/api/admin/push/status` reports `configured: false` without FCM
+  credentials; a normal rider gets `403` from the console; anonymous moderation is `401`.
 
 ### Phase 2 UI checks in jsdom
 
@@ -70,7 +98,7 @@ Total: **48 automated tests + 106 API behaviour assertions.**
   migration).
 - `/api/health` reports `phase: 2` and capability flags.
 - Preview served at `http://localhost:3000`; every new route loads without a console error.
-- Admin credential login, forced password change and re-login.
+- Admin credential login, password change and re-login with the new password.
 - Static serving: gzip on text assets, ETag/304 revalidation, `no-cache` SPA shell (checked
   with `curl -D -`).
 - Map tile requests fail in the sandbox without outbound access to the tile host — the map

@@ -10,17 +10,20 @@ events, the tutorial CMS, catalogue verification, broadcast and the audit trail.
 1. Open the app → **Admin** (visible only to accounts with the `admin` or `moderator` role),
    or go directly to `#/admin`.
 2. You can sign in two ways:
-   - **Studio credential** — the bootstrapper username/password. The first-run development
-     credential is `admin$123$` / `admin$123$`; production generates a random password and
-     prints it once in the server log unless `ADMIN_USERNAME`/`ADMIN_PASSWORD` are set.
+   - **Studio credential** — `admin$123$` / `admin$123$` on a fresh development database. It
+     signs in as the seeded studio profile `nethmi_sds` and needs no password change, so the
+     credential in the brief works exactly as written. Production (`NODE_ENV=production`)
+     refuses this default: set `ADMIN_USERNAME`/`ADMIN_PASSWORD`, or use the random password
+     printed once in the server log and change it at first sign-in.
    - **Google** — sign in with the studio Google account whose `users_private.role` is
      `admin` or `moderator`.
-3. If the console says **Change the bootstrap password now**, do it before anything else.
-   Until then the server blocks every moderation write with `PASSWORD_CHANGE_REQUIRED`.
+3. **Studio Console → Security → Change password** before inviting real riders. The demo
+   credential is published in the project brief, so anyone who can reach the server knows it.
 
 Password rules: minimum 12 characters, not the bootstrap value, stored in the studio
 password manager. Five failed attempts lock the account for 15 minutes; every attempt is
-logged.
+logged. If a deployment somehow still has `must_change_password = 1`, every moderation write
+is refused with `PASSWORD_CHANGE_REQUIRED` until it is cleared.
 
 ### Roles
 

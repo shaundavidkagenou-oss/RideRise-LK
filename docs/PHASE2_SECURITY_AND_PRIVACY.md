@@ -10,9 +10,9 @@ engineering review, not a certification. No external penetration test has been p
 | Control | Implementation |
 |---|---|
 | Rider sign-in | Google ID token verified server-side (RS256 + JWKS) when `GOOGLE_CLIENT_ID` is set; development presets only when `NODE_ENV !== 'production'` |
-| Session token | HS256 JWT, 7-day expiry, signed with `JWT_SECRET`; tampering is rejected |
+| Session token | HS256 JWT, 7-day expiry, signed with `JWT_SECRET`; tampering is rejected. No fallback key ships in the repo — production refuses to start without a 32+ char secret, and development uses a random per-process key |
 | Administrator sign-in | Separate `admin_accounts` table, scrypt password hashes with per-account salt, 5-attempt/15-minute lockout, timing-safe comparison |
-| Forced rotation | `must_change_password` blocks every write action until changed; development default refused in production |
+| Password rotation | `must_change_password` blocks every write action until changed; set for a production-generated password. The documented `admin$123$` demo credential is refused in production |
 | Suspension | Checked on **every** authenticated request, not just at sign-in; suspended tokens return 401/403 and `/api/auth/session` answers `ACCOUNT_SUSPENDED` |
 | Realtime | Short-lived single-use ticket (60 s) exchanged for the SSE stream; the bearer token is never placed in a URL |
 

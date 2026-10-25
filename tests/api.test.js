@@ -1160,3 +1160,17 @@ test('30. Guild invitations, mutual friends, video uploads and suspension lifecy
   const guildRow = db.prepare('SELECT member_limit FROM guilds WHERE id = ?').get('gld_colombo_builders');
   assert.equal(guildRow.member_limit, 25);
 });
+
+test('31. Voice ICE config never claims a relay that is not configured', async () => {
+  const k = await call('/api/auth/google', { method: 'POST', body: { presetAccount: 'kasun' } });
+  assert.equal(k.status, 200);
+  const ice = await call('/api/voice/ice', { token: k.json.token });
+  assert.equal(ice.status, 200);
+  const hasTurn = (ice.json.iceServers || []).some((s) => [].concat(s.urls).some((u) => String(u).startsWith('turn')));
+  assert.equal(ice.json.turn_available, hasTurn, 'turn_available must reflect the servers actually returned');
+  if (!hasTurn) {
+    assert.match(ice.json.note, /No TURN relay configured/i);
+    assert.doesNotMatch(ice.json.note, /^TURN relay configured/i);
+  }
+  assert.equal(ice.json.recording, false, 'voice must never record by default');
+});

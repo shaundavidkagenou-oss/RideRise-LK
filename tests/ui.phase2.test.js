@@ -243,3 +243,34 @@ test('PHASE2 UI 6 — studio console loads metrics and the moderation queue', as
     dom.window.close();
   }
 });
+
+test('PHASE2 UI 7 — Safety Centre publishes community rules and files an appeal', async () => {
+  const token = await signIn('kasun');
+  const { window, document, errors, dom } = await bootApp(token);
+  try {
+    await waitFor(() => document.getElementById('feedList'), 15000, 'authenticated shell');
+    window.location.hash = '#/safety';
+    await waitFor(() => document.getElementById('safetyAppeal'), 15000, 'safety centre');
+
+    // Rules and contact details must be reachable without going through a report form.
+    assert.ok(document.getElementById('safetyGuidelines'), 'community guidelines control must render');
+    await waitFor(() => /community|no appeals/i.test(document.getElementById('myAppeals').textContent), 8000, 'appeal summary');
+
+    click(window, document.getElementById('safetyAppeal'));
+    await waitFor(() => document.getElementById('appealBody'), 6000, 'appeal form');
+    const body = document.getElementById('appealBody');
+    body.value = 'A post of mine was removed on 12 October and I believe it did not break the community rules.';
+    click(window, document.getElementById('appealSend'));
+    await waitFor(() => !document.getElementById('appealBody'), 12000, 'appeal submitted');
+
+    const res = await fetch(`${baseUrl}/api/appeals`, { headers: { Authorization: `Bearer ${token}` } });
+    const data = await res.json();
+    assert.equal(res.status, 200);
+    assert.equal(data.appeals.length, 1, 'the appeal must reach the moderation inbox');
+    assert.equal(data.appeals[0].status, 'pending');
+
+    assert.equal(errors.length, 0, `unexpected JS errors: ${errors.join(' | ')}`);
+  } finally {
+    dom.window.close();
+  }
+});

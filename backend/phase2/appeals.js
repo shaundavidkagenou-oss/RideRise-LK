@@ -59,8 +59,12 @@ module.exports = function registerAppeals(ctx) {
     }
 
     if (pathname === '/api/community/rules' && req.method === 'GET') {
-      const doc = db.prepare("SELECT * FROM legal_documents WHERE slug = 'community-guidelines'").get();
-      const safety = db.prepare("SELECT * FROM legal_documents WHERE slug = 'safety-notice'").get();
+      const doc = db
+        .prepare("SELECT * FROM legal_documents WHERE slug IN ('community_guidelines', 'community-guidelines') ORDER BY slug = 'community_guidelines' DESC LIMIT 1")
+        .get();
+      const safety = db
+        .prepare("SELECT * FROM legal_documents WHERE slug IN ('safety_notice', 'safety-notice') ORDER BY slug = 'safety_notice' DESC LIMIT 1")
+        .get();
       return sendJson(res, 200, {
         community_guidelines: doc || null,
         safety_notice: safety || null,

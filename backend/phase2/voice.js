@@ -52,7 +52,7 @@ module.exports = function registerVoice(ctx) {
       stun_available: stunUrls.length > 0,
       turn_available: turnMode !== 'none',
       turn_mode: turnMode,
-      note: turnMode
+      note: turnMode !== 'none'
         ? 'TURN relay configured — calls can traverse strict NATs and mobile carriers.'
         : 'No TURN relay configured. Peer-to-peer audio works on many networks but can fail on strict carrier NAT. Add TURN_URLS + TURN_SECRET (see docs/PHASE2_VOICE_AND_MAP.md).',
       recording: false

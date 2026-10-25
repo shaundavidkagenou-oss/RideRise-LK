@@ -18,7 +18,29 @@ const PORT = Number(process.env.PORT || 3000);
 const HOST = process.env.HOST || '0.0.0.0';
 const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'riderise_lk.sqlite');
 // Ephemeral or environment-supplied HMAC secret (never hardcoded production secrets in client code)
-const JWT_SECRET = process.env.JWT_SECRET || crypto.createHash('sha256').update('riderise-lk-dev-sandbox-secret-' + __dirname).digest('hex');
+// Session signing key. There is deliberately no built-in fallback secret: a shipped default
+// would let anyone forge an admin token on any deployment that forgot to set one.
+function resolveJwtSecret() {
+  const configured = process.env.JWT_SECRET || '';
+  if (configured.length >= 32) return configured;
+  if (process.env.NODE_ENV === 'production') {
+    console.error(
+      '[RideRise LK] Refusing to start: JWT_SECRET is required in production and must be at least 32 characters.\n' +
+        '  Generate one with:  openssl rand -hex 32'
+    );
+    process.exit(1);
+  }
+  if (configured) {
+    console.warn('[RideRise LK] JWT_SECRET is shorter than 32 characters. Fine for local testing; generate a long one before deploying.');
+    return configured;
+  }
+  console.warn(
+    '[RideRise LK] No JWT_SECRET set: using a random key for this process only. Sessions end when the server restarts.\n' +
+      '  Set JWT_SECRET (openssl rand -hex 32) to keep sessions across restarts.'
+  );
+  return crypto.randomBytes(32).toString('hex');
+}
+const JWT_SECRET = resolveJwtSecret();
 
 // Initialize SQLite database
 const db = new DatabaseSync(DB_PATH);

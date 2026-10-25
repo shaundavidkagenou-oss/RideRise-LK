@@ -50,27 +50,31 @@ module.exports = function registerAdmin(ctx) {
     if (!password) {
       if (isProduction) {
         password = crypto.randomBytes(18).toString('base64url');
-        note = 'No ADMIN_PASSWORD supplied in production: a random bootstrap password was generated and printed once to the server log.';
+        note = 'No ADMIN_PASSWORD supplied in production: a random bootstrap password was generated and must be changed at first sign-in.';
       } else {
         password = defaultPass;
         note =
-          'Development bootstrap credential from the project brief. It MUST be changed at first login; production refuses this default.';
+          'Documented development credential from the project brief. Production refuses this default, so set ADMIN_PASSWORD before deploying.';
       }
     }
 
     const userId = db.prepare("SELECT id FROM users_private WHERE role = 'admin' LIMIT 1").get()?.id || null;
+    // The documented development credential (admin$123$) must work exactly as delivered, so
+    // it is not force-expired. A production bootstrap has no first-run credential at all:
+    // supply ADMIN_PASSWORD, or change the generated one on first sign-in.
+    const mustChange = isProduction && !envPass ? 1 : 0;
     const id = newId('adm');
     db.prepare(
       `INSERT INTO admin_accounts (id, username, password_hash, role, must_change_password, failed_attempts, created_at, updated_at, user_id)
-       VALUES (?, ?, ?, 'admin', 1, 0, ?, ?, ?)`
-    ).run(id, username, hashPassword(password), nowIso(), nowIso(), userId);
+       VALUES (?, ?, ?, 'admin', ?, 0, ?, ?, ?)`
+    ).run(id, username, hashPassword(password), mustChange, nowIso(), nowIso(), userId);
 
     if (password === defaultPass) {
       console.warn(
         '\n[RideRise LK] Admin bootstrap credential created.\n' +
           `  username: ${username}\n  password: ${defaultPass}\n` +
-          '  This development default is public in the project brief and is BLOCKED from production use.\n' +
-          '  You will be forced to set a new password on first login.\n'
+          '  This development default is public in the project brief and is REFUSED in production.\n' +
+          '  Change it from Studio Console → Security before any real deployment.\n'
       );
     } else {
       console.warn(`[RideRise LK] Admin bootstrap account "${username}" created. ${note} The password is not printed here.`);
@@ -93,8 +97,8 @@ module.exports = function registerAdmin(ctx) {
       username: adminAccount.username,
       role: user.role,
       note: mustChange
-        ? 'Set a new admin password before using moderation tools. The bootstrap credential is development-only.'
-        : 'Signed in with a studio admin credential.'
+        ? 'Set a new admin password before using moderation tools.'
+        : 'Signed in with a studio admin credential. Replace the development password before deploying.'
     };
   }
 

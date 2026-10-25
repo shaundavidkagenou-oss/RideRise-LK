@@ -525,6 +525,81 @@
     ['⚖️', 'Follow laws and venue rules', 'Respect Sri Lankan road law, park rules, event-organiser requirements and other riders.']
   ];
 
+  async function loadSafetyMeta() {
+    const note = document.getElementById('myAppeals');
+    try {
+      const data = await api('/api/community/rules');
+      const contact = data.contact || {};
+      const contactEl = document.getElementById('safetyContact');
+      if (contactEl && contact.safety) {
+        contactEl.textContent = `Contact: ${contact.safety} · ${contact.privacy} · ${contact.support}`;
+      }
+      if (!state.token) return;
+      const mine = await api('/api/appeals');
+      if (!note) return;
+      const rows = (mine.appeals || []).slice(0, 3);
+      note.innerHTML = rows.length
+        ? `<strong style="color:var(--text-primary)">Your recent appeals</strong>` +
+          rows
+            .map(
+              (a) =>
+                `<div class="appeal-row"><span class="pill-badge">${escapeHtml(a.status)}</span> ${escapeHtml(
+                  a.scope
+                )} · ${escapeHtml(timeAgo(a.created_at))}</div>`
+            )
+            .join('')
+        : 'No appeals on file. Appeals are reviewed by a human moderator, usually within 72 hours.';
+    } catch (e) {
+      if (note) note.textContent = 'Community rules could not be loaded right now — check your connection.';
+    }
+  }
+
+  function openAppealForm() {
+    if (!state.token) return toast('Sign in to submit an appeal.', 'error');
+    modal({
+      title: 'Appeal a moderation decision',
+      size: '560px',
+      body: `<p class="muted" style="font-size:.86rem">Use this if a post, message, guild or account action was removed or restricted and you believe it was a mistake. A moderator reviews every appeal; abusive appeals can be closed without review.</p>
+        <div class="form-group"><label class="form-label" for="appealScope">What is this about?</label>
+          <select class="form-select" id="appealScope">
+            <option value="platform">My account or content</option>
+            <option value="guild">A guild decision</option>
+            <option value="event">An event</option>
+            <option value="voice">Voice or walkie-talkie access</option>
+          </select></div>
+        <div class="form-group"><label class="form-label" for="appealRef">Reference (optional)</label>
+          <input class="form-input" id="appealRef" maxlength="120" placeholder="Report or notification reference" /></div>
+        <div class="form-group"><label class="form-label" for="appealBody">What happened?</label>
+          <textarea class="form-textarea" id="appealBody" rows="5" maxlength="3000" placeholder="Dates, context and anything a moderator should check (at least 20 characters)."></textarea></div>
+        <p class="muted" style="font-size:.8rem">Appeals are stored with your account for audit. Do not include other people's private information.</p>`,
+      footer: '<button class="btn btn-primary" id="appealSend">Submit appeal</button>',
+      onMount(root) {
+        root.querySelector('#appealSend').addEventListener('click', async () => {
+          const message = root.querySelector('#appealBody').value.trim();
+          if (message.length < 20) return toast('Please explain what happened in at least 20 characters.', 'error');
+          const btn = root.querySelector('#appealSend');
+          btn.disabled = true;
+          try {
+            await api('/api/appeals', {
+              method: 'POST',
+              body: {
+                scope: root.querySelector('#appealScope').value,
+                action_ref: root.querySelector('#appealRef').value.trim(),
+                message
+              }
+            });
+            closeModal();
+            toast('Appeal submitted. A moderator will review it and you will be notified in the app.', 'success', 6000);
+            loadSafetyMeta();
+          } catch (err) {
+            btn.disabled = false;
+            toast(err.message, 'error');
+          }
+        });
+      }
+    });
+  }
+
   async function renderSafety(viewport) {
     let notice = null;
     try {
@@ -551,6 +626,17 @@
         ).join('')}
       </div>
       <section class="card">
+        <h3>Community rules, contact &amp; appeals</h3>
+        <p class="muted" style="font-size:.86rem">The same rules apply to posts, comments, private messages, guilds, guild voice and walkie-talkie. They are published in full — nothing is hidden behind a report form.</p>
+        <div class="bike-actions">
+          <button class="btn btn-secondary" id="safetyGuidelines">Community guidelines</button>
+          <button class="btn btn-secondary" id="safetyPrivacy">Privacy policy</button>
+          <button class="btn btn-secondary" id="safetyAppeal">Appeal a moderation decision</button>
+        </div>
+        <p class="muted" style="font-size:.82rem;margin-top:12px" id="safetyContact">Contact: safety@shaundavidstudios.lk · privacy@shaundavidstudios.lk · support@shaundavidstudios.lk</p>
+        <div id="myAppeals" class="muted" style="font-size:.84rem"></div>
+      </section>
+      <section class="card">
         <h3>Emergency &amp; reporting</h3>
         <p class="muted" style="font-size:.86rem">For immediate danger contact local emergency services (Sri Lanka 119 for police, 1990 Suwa Seriya ambulance). Report content or behaviour in-app so moderators can act.</p>
         <div class="bike-actions">
@@ -565,6 +651,10 @@
           <li><strong>110</strong> — Fire &amp; rescue</li>
         </ul>
       </section>`;
+    viewport.querySelector('#safetyGuidelines').addEventListener('click', () => window.RRAuth.openLegalDocument('community_guidelines'));
+    viewport.querySelector('#safetyPrivacy').addEventListener('click', () => window.RRAuth.openLegalDocument('privacy_policy'));
+    viewport.querySelector('#safetyAppeal').addEventListener('click', openAppealForm);
+    loadSafetyMeta();
     viewport.querySelector('#safetyPreRide').addEventListener('click', () => {
       if (!state.token) return toast('Sign in to record your inspection.', 'error');
       window.RRFeed.openSafetyChecklist();
