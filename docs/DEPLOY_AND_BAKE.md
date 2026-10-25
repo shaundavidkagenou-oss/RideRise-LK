@@ -1,8 +1,13 @@
 # Deploy the server, then compile its address into the app
 
 This is the end-to-end guide for your Enzonic panel
-(`panel.enzonic.com/server/de0c86d1-…`). Follow it in order. Every step has a "you should see"
-line so you can tell it worked before moving on.
+(`panel.enzonic.com/server/de0c86d1-…`), with your address `https://rideriselk.enzonic.dev`.
+Follow it in order. Every step has a "you should see" line so you can tell it worked before
+moving on.
+
+> **First time deploying anything?** Use
+> [`SERVER_SETUP_WALKTHROUGH.md`](SERVER_SETUP_WALKTHROUGH.md) instead — same result, written as
+> literal clicks and console commands for your panel.
 
 The goal at the end:
 
@@ -33,20 +38,22 @@ to get it.
 
 ## 1. What to send me (the short answer sheet)
 
-Once you have these five answers, the app can be wired in one commit. Copy this and fill it in:
+Copy this and fill in what is still blank:
 
 ```
-1. Panel address/log in            : (you already gave me the panel URL)
+1. Panel address/log in            : panel.enzonic.com/server/de0c86d1-…   (known)
 2. Server's allocated IP + port    : ______ : ______      (panel → server → Network/Allocation)
 3. Does the panel give an https://
-   address/subdomain for that port? : yes / no  → if yes, the address: ______
+   address/subdomain for that port? : yes → https://rideriselk.enzonic.dev   (known)
 4. Do you own a domain (e.g.
    riderise.lk) and can you edit
-   its DNS (nameservers at your
-   registrar or Cloudflare)?        : yes / no  → domain: ______
+   its DNS?                         : only needed if answer 3 stops working
 5. Which Node version does the
    server run (panel → Startup)?    : 20 / 22 / 24  (must be 22.13 or newer)
 ```
+
+Because answer 3 is a hostname Enzonic already routes, **Route A in §5 applies**: there is no
+domain to buy and no tunnel to run. Everything else in this document still applies.
 
 Answer 3 or 4 decides the route in §5. If you are not sure about 2 and 5, screenshot the
 **Console** tab (first 20 lines after Start) and the **Startup** tab — both answers are visible
@@ -91,15 +98,24 @@ Two ways — either is fine.
 **A. Git (fastest, easiest to update).** In the panel **Console**:
 
 ```bash
-git clone https://<your-github-username>:<personal-access-token>@github.com/shaundavidkagenou-oss/RideRise-LK.git .
+cd /home/container
+git clone --depth 1 https://github.com/shaundavidkagenou-oss/RideRise-LK.git app
 ```
 
-The repo is private, so the URL needs a GitHub token with read access. Keep that token out of
-`.env` and out of any screenshot.
+The repository is public, so no GitHub token is needed. Cloning into `app/` keeps the panel's own
+files untouched; every path in this guide then becomes `/home/container/app/…`. To update later:
+`cd /home/container/app && git pull`, then restart.
 
-**B. Upload (no token).** Download the repo ZIP from GitHub, then
-**Files → Upload** and extract it so that `package.json` sits directly in `/home/container`
-(next to `backend/`, `config/`, `web_app/`).
+**B. Upload (no git).** On your computer, in the repo folder:
+
+```bash
+npm run bundle:server        # -> release/server/riderise-server.zip, about 3.6 MB
+```
+
+Then **Files → Upload** that ZIP into `/home/container` and, in the console:
+`cd /home/container && unzip -o riderise-server.zip -d app`.
+The bundle contains only what the server reads at runtime — no `tests/`, no `android/`, no
+secrets (the script refuses to include `.env`, databases and keystores).
 
 You do **not** need `npm install`: this app has zero runtime dependencies (everything is
 Node built-ins). `android/`, `tests/` and `release/` are not needed on the server, but harmless.
@@ -163,11 +179,16 @@ Pick **one** route. Route B is the one I recommend for this panel, because a Pte
 panel normally gives you an IP and a high port and nothing else — you cannot open 443 and you
 cannot get a certificate for a bare IP.
 
-### Route A — the panel already gives you a hostname (check this first)
+### Route A — the panel already gives you a hostname (this is your case)
 
-Look in the server's sidebar for **Domains**, **Subdomain**, **SSL**, **Web address** or an
-address printed on the console like `https://something.enzonic.com`.
-If it exists and it shows **https** (not `http://IP:port`), skip to §6 and use that address.
+You have `https://rideriselk.enzonic.dev`. As long as Enzonic routes that subdomain to your
+server's allocated port and terminates TLS (their panel advertises automatic SSL), there is
+nothing to buy and nothing to configure — skip to §6 and use that address.
+
+Verify it before trusting it: open `https://rideriselk.enzonic.dev/api/health` from the phone's
+**mobile data** once the server is running (§4–§6). JSON back = Route A works. A 502 means the
+proxy is fine but Node is not running. A page instead of JSON means the subdomain points
+somewhere else — then use Route B.
 
 ### Route B — your own domain + Cloudflare Tunnel (recommended, free, no ports opened)
 

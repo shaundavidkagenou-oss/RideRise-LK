@@ -415,3 +415,40 @@ test('APK-11 — the panel launcher and the deployment guide ship with the repo'
   assert.ok(pkg.scripts['verify:server'], 'verify:server must be runnable from npm');
   assert.equal(pkg.engines.node, '>=22.13.0', 'node:sqlite is only flag-free from 22.13');
 });
+
+test('APK-12 — the server upload bundle carries the app, never a secret', () => {
+  const py = ['scripts/bundle_server.py'];
+  const list = execFileSync('python3', [...py, '--list'], { cwd: ROOT, encoding: 'utf8' });
+  // Exactly what backend/server.js reads at runtime.
+  for (const needed of [
+    'backend/server.js',
+    'backend/schema.sql',
+    'backend/phase2/index.js',
+    'backend/firebase_auth.js',
+    'config/brand.config.json',
+    'web_app/index.html',
+    'web_app/app.js',
+    'deploy/panel/start.sh',
+    'package.json'
+  ]) {
+    assert.match(list, new RegExp(`\\s${needed.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*$`, 'm'), `${needed} must be in the bundle`);
+  }
+  // Nothing that only matters on a developer machine, and above all nothing secret.
+  for (const forbidden of ['.env', 'google-services.json', 'KEYSTORE-CREDENTIALS.txt', '.keystore', '.sqlite', 'tests/api.test.js', 'android/app/build.gradle.kts']) {
+    assert.doesNotMatch(list, new RegExp(forbidden.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')), `${forbidden} must never be uploaded`);
+  }
+
+  // And the real archive: small enough for a panel upload, and free of secrets by construction.
+  const out = path.join(os.tmpdir(), `riderise-bundle-${Date.now()}.zip`);
+  try {
+    execFileSync('python3', [...py, '--out', out], { cwd: ROOT, encoding: 'utf8' });
+    const size = fs.statSync(out).size;
+    assert.ok(size > 500_000, `bundle looks empty (${size} bytes)`);
+    assert.ok(size < 15 * 1024 * 1024, `bundle is too big for a panel upload (${size} bytes)`);
+    const entries = execFileSync('python3', ['-c', 'import zipfile,sys;print("\\n".join(zipfile.ZipFile(sys.argv[1]).namelist()))', out], { encoding: 'utf8' });
+    assert.match(entries, /^backend\/server\.js$/m);
+    assert.doesNotMatch(entries, /(^|\/)\.env$|google-services\.json|\.keystore$|\.sqlite$/m);
+  } finally {
+    fs.rmSync(out, { force: true });
+  }
+});

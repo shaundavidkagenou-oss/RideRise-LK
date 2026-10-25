@@ -6,6 +6,7 @@ tools/
 android/keystore/
 android/app/src/main/assets/webapp/
 *.sqlite
+release/server/*.zip
 *.sqlite-shm
 *.sqlite-wal
 __pycache__/

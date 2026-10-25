@@ -81,6 +81,7 @@ npm test                                   # 103 automated tests (serial)
 npm run apk                                # rebuild signed debug + release APKs (no SDK required)
 npm run verify:server -- --url https://…   # is a hosted server ready to ship in the app?
 npm run configure:apk -- --url https://…   # compile that address into the next APK
+npm run bundle:server                      # 3.6 MB zip of just what a server needs (panel upload)
 npm run check:android-push                 # 37 static checks of the Gradle/FCM wiring
 npm run check:fcm                          # FCM service-account validity (+ --online to call Google)
 
@@ -159,6 +160,7 @@ tools — is enforced in the backend.
 | TURN relay for reliable voice (`TURN_URLS`, `TURN_SECRET`) | [`docs/PHASE2_VOICE_AND_MAP.md`](docs/PHASE2_VOICE_AND_MAP.md) |
 | Firebase Cloud Messaging (step by step) | [`docs/PHASE2_FIREBASE_PUSH.md`](docs/PHASE2_FIREBASE_PUSH.md) |
 | HTTPS hosting + API URL in the Android shell | [`docs/BUILD_INSTRUCTIONS.md`](docs/BUILD_INSTRUCTIONS.md) |
+| **Click-by-click server setup on a panel (first deployment)** | [`docs/SERVER_SETUP_WALKTHROUGH.md`](docs/SERVER_SETUP_WALKTHROUGH.md) |
 | **Deploying on a hosting panel + compiling the address into the APK** | [`docs/DEPLOY_AND_BAKE.md`](docs/DEPLOY_AND_BAKE.md) |
 | Database migration and backup | [`docs/PHASE2_MIGRATION.md`](docs/PHASE2_MIGRATION.md) |
 | Admin operations | [`docs/PHASE2_ADMIN_GUIDE.md`](docs/PHASE2_ADMIN_GUIDE.md) |

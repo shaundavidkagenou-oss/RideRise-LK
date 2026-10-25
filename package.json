@@ -25,6 +25,7 @@
     "apk:debug": "bash scripts/build_apk.sh debug",
     "apk:release": "bash scripts/build_apk.sh release",
     "configure:apk": "node scripts/configure_apk.js",
+    "bundle:server": "python3 scripts/bundle_server.py",
     "verify:server": "node scripts/verify_server.js"
   },
   "devDependencies": {
