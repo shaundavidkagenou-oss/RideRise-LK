@@ -71,8 +71,8 @@ npm run apk:release    # signed release only
 Outputs:
 
 ```
-release/apk/riderise-lk-phase1-debug.apk      signed with the debug key (debuggable=true)
-release/apk/riderise-lk-phase1-release.apk    signed with the release key (v2+v3)
+release/apk/riderise-lk-phase2-debug.apk      signed with the debug key (debuggable=true)
+release/apk/riderise-lk-phase2-release.apk    signed with the release key (v2+v3)
 release/apk/SHA256SUMS.txt
 release/BUILD_INFO.md
 ```
@@ -103,7 +103,7 @@ release/BUILD_INFO.md
 ### Install on a device
 
 ```bash
-adb install -r release/apk/riderise-lk-phase1-release.apk
+adb install -r release/apk/riderise-lk-phase2-release.apk
 # or copy the APK to the phone, tap it, and allow "install unknown apps" for your file manager
 ```
 
@@ -129,36 +129,76 @@ Edit `config/brand.config.json` → `packageId`, then also update
 ## 4. Running the automated tests
 
 ```bash
-npm test           # 42 tests: 30 API + 12 end-to-end UI
+npm test                    # 88 tests: API, Firebase auth, UI journeys, Android push wiring
 npm run test:api
 npm run test:ui
+npm run check:android-push  # 35 static FCM/Gradle checks (also inside `npm test`)
 ```
 
 The UI tests use `jsdom` to load the real `web_app/` against the real backend, sign in,
-walk every route and execute seven complete user journeys (see
-[`TEST_RESULTS.md`](TEST_RESULTS.md)).
+walk every route and execute the user journeys (see [`TEST_RESULTS.md`](TEST_RESULTS.md) and
+[`PHASE2_TEST_RESULTS.md`](PHASE2_TEST_RESULTS.md)). The Android push suite is static: it reads
+the Gradle files, manifest, Java sources and `google-services.json` and asserts they agree —
+it cannot substitute for running Gradle on a device.
 
 ---
 
-## 5. Optional: studio pipeline (Gradle / Play Store)
+## 5. Studio pipeline: Gradle project with Firebase Cloud Messaging
 
-The Phase 1 APK is intentionally SDK-free so it can be produced in any Linux container.
-For a Play Store release pipeline the studio may prefer Gradle:
+`android/` **is** a complete Android Studio project (not a folder of instructions). Open the
+`android` folder — not the repository root — and let Studio sync.
 
-1. Create a Gradle Android project with `applicationId "lk.shaunstudios.riderise"`,
-   `minSdk 24`, `targetSdk 34`.
-2. Copy `android/app/src/main/java/.../MainActivity.java`, `android/res/` and
-   `android/AndroidManifest.xml` (substituting the `${…}` placeholders) into it.
-3. Copy `web_app/` into `app/src/main/assets/webapp/`.
-4. Reuse the existing `android/keystore/riderise-release.keystore` for signing
-   (`signingConfigs.release`) so installed Phase 1 builds can be updated.
-5. Add the AndroidX `WebViewAssetLoader` (instead of
-   `setAllowUniversalAccessFromFileURLs`) if the studio prefers `https://appassets…`
-   origins. This is a security hardening step, not a functional requirement.
+| Piece | File |
+|---|---|
+| Plugin + toolchain versions | `android/build.gradle.kts`, `settings.gradle.kts` (AGP 8.7.3, google-services 4.5.0) |
+| Gradle wrapper | `android/gradlew`, `gradle/wrapper/` (Gradle 8.9) |
+| App module | `android/app/build.gradle.kts` (compileSdk 35, minSdk 24, targetSdk 34, Firebase BoM 35.1.0, `firebase-messaging`) |
+| App code | `android/app/src/main/java/lk/shaunstudios/riderise/` (`MainActivity`, `PushBridge`, `RideRiseMessagingService`) |
+| Manifest | `android/app/src/main/AndroidManifest.xml` (service, channel `riderise_default`, icon/colour) |
+| Firebase config | `android/app/google-services.json` — **git-ignored**, never commit |
+| Shared resources | `android/res/` (also used by the SDK-free pipeline) |
 
-Firebase migration (Auth/Firestore/Storage/FCM) is described in
-[`EXTERNAL_CONFIG.md`](EXTERNAL_CONFIG.md); the REST API and SQLite schema are designed to
-map 1:1 onto Firestore collections if the studio chooses that route.
+Requirements: **JDK 17**, Android SDK Platform 35, and Google Play services on the device
+(an emulator image with Play, or a real phone).
+
+```bash
+cd android
+./gradlew :app:assembleDebug      # app/build/outputs/apk/debug/app-debug.apk
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+```
+
+What the module does beyond the SDK-free pipeline:
+
+1. `applicationId`, `versionCode` and `versionName` are read from `config/brand.config.json`,
+   so both APK pipelines stay identical.
+2. `rrSyncWebAssets` copies `web_app/` into `assets/webapp/` — the same bundle the SDK-free
+   build ships.
+3. `checkGoogleServices` runs before every build: it fails with the exact fix when
+   `google-services.json` is missing or registered for another package name, and warns when
+   the Android app and `FIREBASE_PROJECT_ID` point at different Firebase projects.
+4. Release signing reuses `android/keystore/riderise-release.keystore` (credentials from
+   `android/keystore.properties` or the pipeline's `KEYSTORE-CREDENTIALS.txt`, both
+   git-ignored), so a Gradle build installs over the existing APK. Without them the release
+   variant falls back to the debug key and prints a warning.
+5. Firebase Cloud Messaging only — no Analytics, no Crashlytics. The web layer keeps the
+   authenticated call: `window.RR.onPushToken(token)` → `POST /api/devices`.
+
+```bash
+npm run check:android-push        # 35 static checks; also part of `npm test`
+```
+
+Push needs the server half too (`FCM_SERVICE_ACCOUNT_FILE`, FCM API enabled) — step 5 of
+`docs/SETUP_GUIDE.md`. Full device walkthrough and troubleshooting table:
+[`android/firebase/README.md`](../android/firebase/README.md).
+
+> **Not verified here:** this container has no Android SDK or Maven access, so Gradle has
+> never resolved these dependencies, signed this module, or produced this APK. Nothing in the
+> FCM path (token, delivery, notification tap) has been exercised on a device.
+
+For a Play Store release, build an **AAB** with the same project
+(`./gradlew :app:bundleRelease`), enrol in Play App Signing, and keep the release keystore
+backed up. Play requires a target API level inside the current window — raise `targetSdk`
+(and `compileSdk`, AGP permitting) when Play announces the next cutoff.
 
 ---
 

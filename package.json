@@ -2,7 +2,7 @@
   "name": "riderise-lk",
   "version": "2.0.0",
   "private": true,
-  "description": "RideRise LK by Shaun David Studios \u2014 Phase 2 community, guild maps, voice/PTT, learning, bike-build and events platform for Sri Lankan riders.",
+  "description": "RideRise LK by Shaun David Studios — Phase 2 community, guild maps, voice/PTT, learning, bike-build and events platform for Sri Lankan riders.",
   "license": "UNLICENSED",
   "author": "Shaun David Studios",
   "engines": {
@@ -12,12 +12,13 @@
     "start": "node --env-file-if-exists=.env backend/server.js",
     "dev": "node --env-file-if-exists=.env --watch backend/server.js",
     "seed:reset": "rm -f backend/riderise_lk.sqlite backend/riderise_lk.sqlite-shm backend/riderise_lk.sqlite-wal",
-    "test": "node --test --test-concurrency=1 tests/api.test.js tests/auth.firebase.test.js tests/ui.smoke.test.js tests/ui.flows.test.js tests/ui.auth.test.js tests/ui.phase2.test.js",
+    "test": "node --test --test-concurrency=1 tests/api.test.js tests/auth.firebase.test.js tests/ui.smoke.test.js tests/ui.flows.test.js tests/ui.auth.test.js tests/ui.phase2.test.js tests/android.push.test.js",
     "test:api": "node --test tests/api.test.js",
     "test:auth": "node --test tests/auth.firebase.test.js",
     "test:ui": "node --test --test-concurrency=1 tests/ui.smoke.test.js tests/ui.flows.test.js tests/ui.phase2.test.js",
     "probe:admin": "node scripts/probe_admin.js",
     "check:setup": "node scripts/check_setup.js",
+    "check:android-push": "node scripts/verify_android_push.js",
     "apk": "bash scripts/build_apk.sh all",
     "apk:debug": "bash scripts/build_apk.sh debug",
     "apk:release": "bash scripts/build_apk.sh release"

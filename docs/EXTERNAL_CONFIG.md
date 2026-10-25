@@ -25,7 +25,7 @@ pieces your current environment already has.
 | Map tiles | OSM (no key) or MapTiler/Mapbox/Thunderforest key | OSM free under usage policy; commercial hosts have free tiers then paid **verify** | Street basemap under guild live markers | Markers still render on a blank grid; map shows an offline/tile-error state |
 | Voice / walkie-talkie relay | TURN service (Twilio NTS, Metered, Cloudflare) or self-hosted coturn | free tier then per-GB **verify** | Calls between devices on mobile networks/NAT | STUN-only: works on some Wi-Fi pairs, fails on many carrier networks |
 | Push notifications | Firebase project + service-account JSON | FCM is free | Server-side delivery to registered devices | In-app realtime + badges only |
-| FCM in the APK | Firebase Android SDK + `google-services.json` | free | A device token the app can register | **Not in the shipped APK** — see §6; in-app notifications still work |
+| FCM in the APK | `google-services.json` (supplied) + Android Studio build | free | A device token the app can register | The SDK-free APK has no Play Services; `android/` has the Gradle project but Gradle was not run here — see §6 |
 | Google Play publishing | Play Console account, AAB, privacy/data-safety forms | one-time registration fee **verify** | Public distribution | Sideload the APK only |
 | Hosting | Node 22 host + persistent disk + TLS domain | varies | Public access | Local/LAN only |
 | Legal + translations | Sri Lankan lawyer, Sinhala/Tamil reviewer | quote | Launch-ready policies | Drafts are marked "subject to legal review" |
@@ -185,12 +185,13 @@ reports `turnRelay: false`.
 Fees: FCM is free for standard messaging. Quota: per-project message rates, not per-user
 billing.
 
-**Device side — honest gap:** the shipped APK has **no Firebase SDK**, so it cannot obtain a
-registration token. Registering a token is implemented (`POST /api/devices`), delivery and
-logging are implemented (`push_delivery_log`), and the app uses in-app realtime notifications
-without Firebase. To get true push you must add the Firebase BoM + messaging dependency and
-`google-services.json` in a Gradle build, then call `POST /api/devices` with the token.
-`docs/PHASE2_FIREBASE_PUSH.md` has the payload contract and the exact request/response flow.
+**Device side:** the shipped SDK-free APK still has **no Firebase SDK**, so it cannot obtain a
+registration token. `android/` is now a complete Android Studio project with the Firebase BoM
+35.1.0 + `firebase-messaging`, the Google services plugin, your `google-services.json`
+(git-ignored), a token bridge (`PushBridge`), a notification service and deep links. Gradle has
+not been run in this environment and no device was available, so token retrieval and delivery
+remain unverified. `android/firebase/README.md` is the build guide;
+`docs/PHASE2_FIREBASE_PUSH.md` has the payload contract and the server steps.
 
 Push behaviour that is already enforced server-side: blocked users are never notified,
 previews are off by default (`show_previews`), quiet hours are honoured, and muted

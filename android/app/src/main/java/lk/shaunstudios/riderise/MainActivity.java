@@ -3,6 +3,9 @@ package lk.shaunstudios.riderise;
 import android.Manifest;
 import android.annotation.SuppressLint;
 import android.app.Activity;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
@@ -37,6 +40,7 @@ import android.widget.Toast;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.lang.reflect.Method;
 
 /**
  * RideRise LK — Android shell by Shaun David Studios.
@@ -55,6 +59,20 @@ public class MainActivity extends Activity {
     private static final int REQ_NOTIFICATIONS = 1002;
     private static final int REQ_MICROPHONE = 1003;
     private static final int REQ_LOCATION = 1004;
+
+    /**
+     * FCM notification channel id. The server targets this channel
+     * (backend/phase2/core.js: android.notification.channel_id) and the Gradle manifest
+     * declares it as com.google.firebase.messaging.default_notification_channel_id.
+     */
+    public static final String NOTIFICATION_CHANNEL_ID = "riderise_default";
+
+    /**
+     * Intent extra carrying an in-app route such as "#/notifications". Play Services copies
+     * FCM data keys into the launch intent, so a tapped notification opened from the
+     * background carries "deep_link" without any native parsing step.
+     */
+    public static final String EXTRA_DEEP_LINK = "deep_link";
     /**
      * The bundled UI is served over a virtual HTTPS origin instead of file://.
      *
@@ -76,12 +94,19 @@ public class MainActivity extends Activity {
     private PermissionRequest pendingAudioRequest;
     private GeolocationPermissions.Callback pendingGeoCallback;
     private String pendingGeoOrigin;
+    private String pendingDeepLink;
     private long lastBackPressedAt = 0L;
 
     @SuppressLint("SetJavaScriptEnabled")
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
+        // Create the channel before any push can arrive, so the server's channel_id resolves
+        // even on a cold start triggered by a notification.
+        ensureNotificationChannel(this);
+        Intent launch = getIntent();
+        if (launch != null) pendingDeepLink = launch.getStringExtra(EXTRA_DEEP_LINK);
 
         FrameLayout root = new FrameLayout(this);
         root.setBackgroundColor(0xFF07090E);
@@ -156,6 +181,8 @@ public class MainActivity extends Activity {
                     splashLogo.setVisibility(View.GONE);
                 }
             }).start();
+            // A notification tap that launched the app is applied once the web app is ready.
+            deliverDeepLink();
         }
 
         @Override
@@ -383,7 +410,7 @@ public class MainActivity extends Activity {
             Toast.makeText(
                     this,
                     granted
-                            ? "Notifications allowed. Register your FCM token with the backend to receive event reminders."
+                            ? getString(R.string.notifications_requested)
                             : "Notifications declined — you can enable them later in Android settings.",
                     Toast.LENGTH_LONG).show();
             return;
@@ -515,6 +542,32 @@ public class MainActivity extends Activity {
             return true; // pre-Android 13 has no runtime notification permission
         }
 
+        /**
+         * Asks Firebase for the FCM registration token. Implemented by PushBridge, which only
+         * exists in the Gradle build: the SDK-free APK (no Play Services) resolves nothing and
+         * stays exactly as it was. Reflection keeps one MainActivity for both pipelines.
+         */
+        @JavascriptInterface
+        public void requestPushToken() {
+            try {
+                Class<?> bridge = Class.forName("lk.shaunstudios.riderise.PushBridge");
+                Method request = bridge.getMethod("requestToken", WebView.class, Context.class);
+                request.invoke(null, webView, getApplicationContext());
+            } catch (ClassNotFoundException noFirebase) {
+                Log.i(TAG, "Push disabled: this build has no Firebase Messaging (SDK-free APK)");
+            } catch (Throwable err) {
+                Log.w(TAG, "FCM token request failed", err);
+            }
+        }
+
+        /** Last cached FCM token (empty string when push has never registered). */
+        @JavascriptInterface
+        public String getPushToken() {
+            // Same file/keys as PushBridge.PREFS / PushBridge.KEY_TOKEN.
+            SharedPreferences prefs = getSharedPreferences("riderise_push", MODE_PRIVATE);
+            return prefs.getString("fcm_token", "");
+        }
+
         @JavascriptInterface
         public String getPlatformInfo() {
             return "{\"platform\":\"android\",\"sdk\":" + Build.VERSION.SDK_INT
@@ -537,6 +590,54 @@ public class MainActivity extends Activity {
         } catch (Exception e) {
             return "unknown";
         }
+    }
+
+    /** Reuse the running task when a notification is tapped (android:launchMode="singleTop"). */
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        if (intent == null) return;
+        String link = intent.getStringExtra(EXTRA_DEEP_LINK);
+        if (link == null || link.isEmpty()) return;
+        pendingDeepLink = link;
+        deliverDeepLink();
+    }
+
+    /**
+     * Applies a pending notification route inside the WebView. Only in-app hash routes are
+     * accepted, so a crafted notification cannot navigate the shell to a remote page.
+     */
+    private void deliverDeepLink() {
+        if (pendingDeepLink == null || pendingDeepLink.isEmpty() || webView == null) return;
+        String link = pendingDeepLink;
+        pendingDeepLink = null;
+        String hash = link.startsWith("#") ? link.substring(1) : link;
+        if (!hash.startsWith("/")) {
+            Log.w(TAG, "Ignoring notification deep link that is not an in-app route: " + link);
+            return;
+        }
+        String quoted = "\"" + hash.replace("\\", "\\\\").replace("\"", "\\\"")
+                .replace("\n", "").replace("\r", "") + "\"";
+        webView.evaluateJavascript("location.hash = " + quoted, null);
+    }
+
+    /**
+     * Declares the notification channel the server targets. Plain android.app APIs, so the
+     * SDK-free APK calls the same method and gets the same channel.
+     */
+    public static void ensureNotificationChannel(Context context) {
+        if (context == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return;
+        NotificationManager manager =
+                (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+        if (manager == null || manager.getNotificationChannel(NOTIFICATION_CHANNEL_ID) != null) return;
+        NotificationChannel channel = new NotificationChannel(
+                NOTIFICATION_CHANNEL_ID,
+                context.getString(R.string.notification_channel_name),
+                NotificationManager.IMPORTANCE_HIGH);
+        channel.setDescription(context.getString(R.string.notification_channel_description));
+        channel.enableVibration(true);
+        manager.createNotificationChannel(channel);
     }
 
     @Override

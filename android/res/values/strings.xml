@@ -4,5 +4,9 @@
     <string name="safety_notice">RideRise LK — wear a certified helmet, inspect your bike before every ride, and never perform stunts on public roads, in traffic, or near pedestrians.</string>
     <string name="back_to_exit">Press back again to exit RideRise LK</string>
     <string name="server_missing">No RideRise LK API server configured yet. Open Settings → Server connection.</string>
-    <string name="notifications_requested">Notification permission handled — FCM token registration is a documented Phase 1 integration point.</string>
+    <string name="notifications_requested">Notifications enabled — guild, message and event alerts will arrive here.</string>
+    <!-- Channel shown in Android Settings → Apps → RideRise LK → Notifications.
+         The id ("riderise_default") is sent by the server and must match core.js. -->
+    <string name="notification_channel_name">RideRise LK updates</string>
+    <string name="notification_channel_description">Guild activity, direct messages, event reminders and safety notices.</string>
 </resources>

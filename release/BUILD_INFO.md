@@ -1,20 +1,25 @@
 # RideRise LK — APK build provenance
 
-Rebuilt on **2026-10-25 09:09 UTC** after wiring the real Firebase project (`rideriselk`) and
-adding the verifier-reachability check + honest banner shown when a server cannot reach
-Google's token endpoint, so the bundled `assets/webapp/` matches the current source. Google
-Sign-In remains removed; email/password is the only real sign-in path. Built with
+Rebuilt on **2026-10-25 09:20 UTC** after adding the Android push (FCM) build: a complete
+Gradle project under `android/` (AGP 8.7.3, Google services plugin 4.5.0, Firebase BoM
+35.1.0, `firebase-messaging`), the native token bridge, notification service, channel and
+deep-link routing, plus `scripts/verify_android_push.js`. The bundled `assets/webapp/` was
+refreshed from the current source so the shell and the web build match. Built with
 `scripts/build_apk.sh all` (no Android SDK or Gradle; the toolchain provisions a Java runtime,
 aapt2, d8, ecj and apksigner). Verified with `apksigner verify` and `aapt2 dump badging /
 permissions`. **The APK has not been installed or launched** — this environment has no device
 and no emulator.
 
+> This SDK-free APK still contains **no Play Services and no Firebase SDK**, so it cannot
+> receive push. The Firebase build lives in `android/` and must be opened in Android Studio;
+> it has never been compiled by Gradle here. See `android/firebase/README.md`.
+
 ## Phase 2 artifacts
 
 | File | Size | SHA-256 |
 |---|---|---|
-| `apk/riderise-lk-phase2-debug.apk` | 2,436,348 B | `af6a76ba536798677c4d0852f1e89a8e2e95e24201b998ac34b3e81a281f2e87` |
-| `apk/riderise-lk-phase2-release.apk` | 2,444,540 B | `1ca339d27fae5f7639aaaeb686527da61dc21952ef471a709ab72d030e258df0` |
+| `apk/riderise-lk-phase2-debug.apk` | 2,440,529 B | `709a3719fdc309e3a120d2ad3f255997ae7ecd55cd156808d74fe6c2a89649a4` |
+| `apk/riderise-lk-phase2-release.apk` | 2,444,624 B | `32fce39f31d2cc413f3b81eecc19e9878d6aab5dc62ea88ba09af3f898856412` |
 
 Both are listed in `apk/SHA256SUMS.txt`; verify with `cd release/apk && sha256sum -c
 SHA256SUMS.txt`. The `.idsig` files are v4 signature sidecars.
@@ -95,12 +100,15 @@ cd release/apk && sha256sum -c SHA256SUMS.txt
 ## What this build does *not* prove
 
 - It was **not installed on a physical device or emulator** in this environment. Installation,
-  launch, Google sign-in, microphone and location prompts, and two-device voice must be
-  verified on real hardware.
-- Push delivery is not active because no Firebase project or client token exists yet
-  (`docs/PHASE2_FIREBASE_PUSH.md`).
-- Google OAuth requires your real `GOOGLE_CLIENT_ID` and the release SHA-1/SHA-256 registered
-  in Google Cloud Console (`docs/GOOGLE_SIGNIN.md`).
+  launch, Firebase email/password sign-in, microphone and location prompts, and two-device
+  voice must be verified on real hardware.
+- Push is **not** active in this APK: it bundles no Play Services, so no FCM token can be
+  issued. The Gradle/FCM project in `android/` has never been compiled by Gradle here (no
+  Android SDK or Maven access), so token retrieval, notification display and deep-link taps
+  remain unverified until you run it in Android Studio on a Play-enabled device.
+- Delivery also needs the server-side Firebase service account in
+  `FCM_SERVICE_ACCOUNT_FILE` (`docs/PHASE2_FIREBASE_PUSH.md`); without it `/api/health`
+  reports `"push":false` and no push is sent.
 
 ## Play Store notes
 

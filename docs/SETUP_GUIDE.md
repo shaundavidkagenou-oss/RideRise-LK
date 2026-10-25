@@ -56,7 +56,7 @@ from the brief; it also works from Studio Console → Sign in).
 
 ```bash
 curl -s localhost:3000/api/health | python3 -m json.tool     # "phase": 2
-npm test                                                     # 81 tests, 81 pass
+npm test                                                     # 88 tests, 88 pass
 ```
 
 ---
@@ -259,7 +259,9 @@ Gradle build.
 1. <https://console.firebase.google.com/> → **Add project** (analytics optional).
 2. **Project settings → Your apps → Add app → Android**: package `lk.shaunstudios.riderise`.
    Download `google-services.json` — you will need it in 5b. Do **not** commit it
-   (`.gitignore` already excludes it).
+   (`.gitignore` already excludes it). For project `rideriselk` this is already done:
+   `android/app/google-services.json` is installed (mode 600, untracked) and `npm test`
+   checks that its package name and project id match the app and the server.
 3. **Project settings → Service accounts → Generate new private key.** Save the JSON outside
    the repo, e.g. `/etc/riderise/firebase-service-account.json`, `chmod 600`.
 4. Enable the API: <https://console.cloud.google.com/> → APIs & Services → enable
@@ -281,23 +283,50 @@ Gradle build.
    last 40 delivery attempts. A configured project with zero devices is the normal state
    until a phone registers.
 
-### 5b. Device half (Android Studio, ~1–2 hours)
+### 5b. Device half (Android Studio, ~30 minutes)
 
-The SDK-free APK has no Play Services, so it cannot obtain a token. In a Gradle build:
+The SDK-free APK has no Play Services, so it cannot obtain a token. `android/` is now a
+complete Gradle project with FCM already wired:
 
-1. Follow `android/firebase/README.md`: dependencies, manifest additions, two Java classes,
-   `app/google-services.json`.
-2. Run the app, sign in. `web_app/app.js` calls `RRAndroid.requestPushToken()`, receives the
-   token via `RR.onPushToken`, and `POST /api/devices` registers it with the rider's session.
-3. Send yourself a push:
+1. Open the **`android`** folder in Android Studio (JDK 17, SDK Platform 35). Sync.
+2. Build and install:
+
+   ```bash
+   cd android
+   ./gradlew :app:assembleDebug
+   adb install -r app/build/outputs/apk/debug/app-debug.apk
+   ```
+
+   `checkGoogleServices` runs first and fails with the exact fix if
+   `google-services.json` is missing or registered for a different package name.
+
+3. In the app, set **Settings → Server connection** to your HTTPS API, then sign in.
+   `web_app/app.js` calls `RRAndroid.requestPushToken()`; `PushBridge` fetches the FCM token
+   and hands it back through `RR.onPushToken(token)`, which `POST /api/devices` registers
+   with the rider's session. The native side never stores a session credential.
+
+4. Confirm the wiring without a device:
+
+   ```bash
+   npm run check:android-push     # 35 static checks (Gradle, manifest, bridge, config)
+   adb logcat -s RideRisePush RideRiseFCM RideRiseLK   # token errors appear here
+   ```
+
+5. Send yourself a push:
    **Studio Console → Broadcast**, or
 
    ```bash
    curl -X POST localhost:3000/api/admin/push/test -H "Authorization: Bearer $ADMIN_TOKEN"
    ```
 
-**Prove it worked:** the phone shows "RideRise LK test push"; `push_delivery_log` has a `sent`
-row; tapping the notification opens `#/notifications`.
+**Prove it worked:** the phone shows the notification on the `riderise_default` channel;
+`push_delivery_log` has a `sent` row; tapping it opens the route carried in `deep_link`
+(`#/notifications`, `#/events`, `#/safety`).
+
+**Honest state:** this sandbox has no Android SDK or device, so Gradle was never run here and
+no token or notification has been exercised. Only the wiring is verified
+(`npm run check:android-push`, `npm test`). Expect to fix environment issues on your machine —
+the troubleshooting table is in [`android/firebase/README.md`](../android/firebase/README.md).
 
 **Privacy defaults already enforced server-side:** previews are off by default (the push body
 becomes "You have a new private update."), quiet hours are honoured, muted conversations are

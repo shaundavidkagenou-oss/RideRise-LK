@@ -118,6 +118,10 @@ PY
     --no-version-vectors \
     "$BUILD/compiled-$variant.zip"
 
+  # Only MainActivity.java is compiled here. PushBridge.java and RideRiseMessagingService.java
+  # live next to it but import Firebase/Play Services, which this SDK-free pipeline does not
+  # ship: they belong to the Gradle project in android/ (see android/firebase/README.md).
+  # MainActivity reaches PushBridge reflectively, so it compiles in both pipelines.
   log "[$variant] Compiling Java (Eclipse compiler — no JDK required)"
   rm -rf "$BUILD/classes-$variant" && mkdir -p "$BUILD/classes-$variant" "$BUILD/dex-$variant"
   "$JAVA" -jar "$TOOLS/ecj.jar" \

@@ -5,15 +5,22 @@ sandbox, **no physical Android device and no emulator**.
 
 > **Update — Firebase email/password authentication.** 30 new tests were added after this
 > Phase 2 snapshot: `tests/auth.firebase.test.js` (23 server-side tests with locally-signed ID
-> tokens) and `tests/ui.auth.test.js` (7 end-to-end UI flows). Google sign-in was removed. The
-> suite is now **81/81**.
+> tokens) and `tests/ui.auth.test.js` (7 end-to-end UI flows). Google sign-in was removed.
 > Results and the tested-vs-awaiting-configuration split are in
 > [`FIREBASE_AUTH.md`](FIREBASE_AUTH.md) §9.
+>
+> **Update — Android push (FCM) build.** `tests/android.push.test.js` adds **7** static tests
+> over `scripts/verify_android_push.js` (**35 checks**): Gradle plugin/BoM/messaging, manifest
+> service + channel `riderise_default`, Java bridge and deep-link contract, `POST /api/devices`,
+> git-ignore hygiene, and the real `google-services.json` (package id, sender id and project id
+> all match `rideriselk`). The suite is now **88/88**.
+> **Gradle was not executed** in this environment and no token or notification was produced —
+> see [`../android/firebase/README.md`](../android/firebase/README.md) §1.
 
 Reproduce everything:
 
 ```bash
-npm test                       # 81 node:test tests (Phase 1 + Phase 2 UI + Firebase auth), serially
+npm test                       # 88 node:test tests (Phase 1 + Phase 2 UI + Firebase auth + Android push), serially
 npm run probe:admin            # 36-check studio-admin capability probe (needs PROBE_BASE)
 ```
 
@@ -33,8 +40,12 @@ jsdom environments exhaust a 4 GB sandbox.
 | `tests/ui.phase2.test.js` — Phase 2 screens | **7 / 7 pass** |
 | Phase 2 probe harness — 106 assertions | **106 / 106 pass, 0 failed** |
 | `scripts/probe_admin.js` — admin capability probe | **36 / 36 pass, 0 failed** |
+| `tests/auth.firebase.test.js` — Firebase ID-token auth | **23 / 23 pass** |
+| `tests/ui.auth.test.js` — Firebase sign-in / verification UI | **7 / 7 pass** |
+| `tests/android.push.test.js` — FCM/Gradle wiring (static) | **7 / 7 pass** (35 verifier checks) |
 
-Total: **51 automated tests + 106 API behaviour assertions + 36 admin capability checks.**
+Current total: **88 automated tests + 106 API behaviour assertions + 36 admin capability
+checks.** The 51-test Phase 2 snapshot below is kept as the original record.
 
 `tests/api.test.js` also pins two honesty rules as regressions: `/api/voice/ice` must never
 say a TURN relay is configured when none is (`turn_available` is derived from the servers it

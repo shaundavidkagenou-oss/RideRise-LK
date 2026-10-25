@@ -1,169 +1,143 @@
-# Phase 2 — Firebase Cloud Messaging setup (step by step)
+# Phase 2 — Firebase Cloud Messaging (FCM) setup and status
 
-RideRise LK's notification system works **in-app out of the box** (history, unread counts,
-preferences, quiet hours, deep links). Push delivery to a sleeping phone requires Firebase
-Cloud Messaging (FCM) and a client that can obtain an FCM registration token.
+RideRise LK's notification centre works in-app out of the box (history, unread counts,
+preferences, quiet hours, deep links, `push_delivery_log`). Push to a sleeping phone needs
+three things: a Firebase project, an Android client that can obtain an FCM token, and a
+server-side service account. All three are now wired; only the last one still needs a
+credential from you.
 
-> **Read this first — current state, stated honestly.** The backend implements FCM HTTP v1
-> sending (`backend/phase2/core.js → createPushSender`), logs every attempt in
-> `push_delivery_log`, and exposes `POST /api/devices` for token registration. The
-> Android shell **does not yet embed the Firebase SDK**, and the web app does not request a
-> token, because that requires your Firebase project's `google-services.json`, which this
-> repository cannot ship. Until you complete steps 7–8, push messages remain in-app only.
-> The admin console's push panel will say **Not configured**, and that is the truthful
-> state. Do not claim push works before you finish and test it.
+> **Current state, stated honestly**
+>
+> | Piece | State |
+> |---|---|
+> | Firebase project `rideriselk` | exists (created in the studio's console) |
+> | Android app registered for `lk.shaunstudios.riderise` | yes — `android/app/google-services.json` installed, mode 600, **git-ignored** |
+> | Gradle project with `google-services` 4.5.0 + Firebase BoM 35.1.0 + `firebase-messaging` | written in `android/`, **never compiled by Gradle here** (no Android SDK/Maven in the sandbox) |
+> | Native token bridge, notification service, channel, deep links | written and statically verified (`npm run check:android-push`, `npm test`) |
+> | Client registration → `POST /api/devices` | wired in `web_app/app.js`, exercised by the API tests with a fake token |
+> | Server sending (FCM HTTP v1) | implemented; **disabled** until `FCM_SERVICE_ACCOUNT_FILE` is set (`/api/health` → `"push":false`) |
+> | Real token / real notification on a phone | **not tested** — no device or emulator here |
+>
+> Do not claim push works before steps 1–3 succeed on your hardware.
 
 ---
 
-## 1. Create the Firebase project
+## 1. What already exists in the repository
 
-1. Open <https://console.firebase.google.com/> and sign in with the studio Google account.
-2. **Add project** → name it e.g. `riderise-lk` → accept the terms → create.
-3. Google Analytics is optional; you do not need it for messaging.
+| Area | File |
+|---|---|
+| FCM HTTP v1 sender (service-account JWT) | `backend/phase2/core.js` → `createPushSender` |
+| Device registration / removal | `backend/phase2/social2.js` → `POST` / `DELETE /api/devices` |
+| Delivery log + admin status | `push_delivery_log`, `GET /api/admin/push/status` |
+| Gradle project (AGP 8.7.3, Gradle 8.9) | `android/build.gradle.kts`, `android/app/build.gradle.kts` |
+| Firebase config (yours, untracked) | `android/app/google-services.json` |
+| Manifest: service, channel `riderise_default`, icon, colour | `android/app/src/main/AndroidManifest.xml` |
+| Token bridge | `android/app/src/main/java/…/PushBridge.java` |
+| Notification service | `android/app/src/main/java/…/RideRiseMessagingService.java` |
+| JS bridge + registration | `…/MainActivity.java`, `web_app/app.js` (`RR.onPushToken`) |
+| Static verifier (35 checks) | `scripts/verify_android_push.js` |
+| Device walkthrough + troubleshooting | [`android/firebase/README.md`](../android/firebase/README.md) |
 
-## 2. Register the Android app
+## 2. Server half (15 minutes)
 
-1. In the project, click the Android icon (**Add app → Android**).
-2. Android package name: **`lk.shaunstudios.riderise`** (must match exactly; it is set in
-   `config/brand.config.json` and the APK manifest).
-3. App nickname: `RideRise LK`.
-4. Debug signing certificate SHA-1 (not needed for email/password auth or FCM
-   itself). Print it with:
+1. Firebase console → **Project settings → Service accounts → Generate new private key**.
+   Save the JSON outside the repository, e.g. `/etc/riderise/firebase-service-account.json`,
+   `chmod 600`, owned by the service user. Never commit it, never paste it into chat.
+2. Google Cloud console → APIs & Services → enable **Firebase Cloud Messaging API** for the
+   same project (otherwise FCM answers `HTTP 403`).
+3. Add to the server environment and restart:
 
    ```bash
-   keytool -list -v -keystore android/keystore/riderise-release.jks \
-     -alias riderise -storepass "$KEYSTORE_PASSWORD" | grep SHA1
+   FCM_SERVICE_ACCOUNT_FILE=/etc/riderise/firebase-service-account.json
+   FIREBASE_PROJECT_ID=rideriselk          # must equal project_info.project_id in google-services.json
    ```
 
-   Add both the debug and release SHA-1 values.
-5. Download **`google-services.json`** and place it at
-   `android/app/google-services.json` (the build script copies `android/` into the APK
-   source tree; keep this file out of Git — it is not a secret but it is project-specific).
+   (`FCM_SERVICE_ACCOUNT_JSON` accepts the same JSON inline instead of a path.)
+4. Verify:
 
-## 3. Enable the FCM API
+   ```bash
+   curl -s localhost:3000/api/health | grep -o '"push":[a-z]*'   # → "push":true
+   npm run check:setup                                           # Firebase service account ✔
+   ```
 
-1. Firebase console → **Project settings → Cloud Messaging** → confirm the Cloud Messaging
-   API is enabled (it is by default on new projects).
-2. Note the **Project ID**.
+   The admin console (**Studio Console → Audit & push**) shows the project id and the last 40
+   delivery attempts.
 
-## 4. Create a service account for the server
+## 3. Android half (Android Studio, ~30 minutes)
 
-1. Firebase console → **Project settings → Service accounts**.
-2. **Generate new private key** → download the JSON file.
-3. Store it **outside the repository**, e.g. `/etc/riderise/firebase-service-account.json`,
-   readable only by the service user (`chmod 600`, owned by the app user).
-4. Never commit it, never paste it into chat, never bundle it in the APK.
+1. Open the **`android`** folder in Android Studio with **JDK 17** and **SDK Platform 35**.
+2. `./gradlew :app:assembleDebug` (or press Run). `checkGoogleServices` validates
+   `google-services.json` first and fails with the exact fix if it is missing or belongs to a
+   different package name.
+3. Install on a **Play-enabled** device or emulator (AOSP images have no Play services and can
+   never receive FCM messages).
+4. Set the API base URL in the app (**Settings → Server connection**), then sign in with
+   Firebase email/password.
+5. `web_app/app.js` calls `RRAndroid.requestPushToken()`; `PushBridge` fetches the token and
+   hands it back through `window.RR.onPushToken(token)`, which registers it with the rider's
+   session. Logs: `adb logcat -s RideRisePush RideRiseFCM RideRiseLK`.
+6. Send a test push: **Studio Console → Broadcast**, or
+   `POST /api/admin/push/test` with an admin bearer token. Background notifications use the
+   channel, icon and accent colour from the manifest; tapping one opens the `deep_link` route.
 
-JSON shape the server expects:
-
-```json
-{
-  "type": "service_account",
-  "project_id": "riderise-lk",
-  "client_email": "firebase-adminsdk-xxxxx@riderise-lk.iam.gserviceaccount.com",
-  "private_key": "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
-}
-```
-
-## 5. Configure the server
-
-Add to the environment (systemd `Environment=`, `.env` loaded by your process manager, or
-`export` before `npm start`):
-
-```bash
-FCM_SERVICE_ACCOUNT_FILE=/etc/riderise/firebase-service-account.json
-# or, for a single-line value from a secret manager:
-# FCM_SERVICE_ACCOUNT_JSON={"project_id":"...","client_email":"...","private_key":"..."}
-```
-
-Then:
-
-```bash
-npm start
-curl -s localhost:3000/api/health | jq '.capabilities.push'      # expect true
-```
-
-Admin console → **Audit & push** should now show **FCM configured** with the project id.
-
-## 6. Register device tokens
-
-The app must send a token after sign-in:
+## 4. Token API contract (unchanged)
 
 ```http
 POST /api/devices
-Authorization: Bearer <user token>
+Authorization: Bearer <rider session token>
 Content-Type: application/json
 
-{ "token": "<FCM registration token>", "platform": "android", "device_label": "Pixel 6a" }
+{ "token": "<FCM registration token>", "platform": "android", "app_version": "2.0.0" }
 ```
 
-`DELETE /api/devices` with the same token removes it (call this on sign-out). Tokens are
-stored in `device_tokens` with the last-seen timestamp; invalid tokens are pruned when FCM
-answers `UNREGISTERED`.
+Returns `201`. Re-registering the same token refreshes `last_seen_at`. `DELETE /api/devices`
+with the same body removes it (call on sign-out). Tokens are stored in `device_tokens`; FCM
+answers `UNREGISTERED` when a token is stale, and the row is pruned.
 
-## 7. Get a token in the Android shell
+The web layer always makes this call — the native code never holds a session credential.
 
-Pick one path:
+## 5. Testing and failure modes
 
-**A. Firebase JavaScript SDK inside the bundled WebView (simplest)**
-
-1. `npm install firebase` in a small build step, then copy the modular browser build into
-   `android/assets/webapp/vendor/firebase/`.
-2. Add a `firebase-messaging-sw.js` service worker **only if** you also serve the web app
-   over HTTPS; the bundled `file://` app cannot use a service worker.
-3. In `web_app/app.js` (after session refresh), call `getToken(messaging, { vapidKey })` and
-   `POST /api/devices`. Needs a Web Push VAPID key from Firebase → **Cloud Messaging → Web
-   Push certificates**.
-
-**B. Native Firebase Android SDK (recommended for a WebView shell)**
-
-1. Add the Firebase BOM and `firebase-messaging` to `android/app/build.gradle`.
-2. Add the `google-services` Gradle plugin; it reads `google-services.json`.
-3. Add a `FirebaseMessagingService` subclass, override `onNewToken` and
-   `onMessageReceived`, and forward the token to the WebView via a JavascriptInterface or a
-   direct HTTPS call to `POST /api/devices`.
-4. Request `POST_NOTIFICATIONS` at runtime (Android 13+) — the shell already exposes a
-   request path for this.
-5. Create a notification channel (`riderise_messages`) and build notifications with
-   `NotificationCompat`, using the deep link as the `PendingIntent` data URI.
-
-The current source tree has neither A nor B; whichever you choose, keep the server contract
-above unchanged.
-
-## 8. Test
-
-1. Register a real device token.
-2. Admin console → **Audit & push → Send test push to my device** (calls
-   `POST /api/admin/push/test`).
-3. Check `push_delivery_log` for the result and the device for the notification.
-4. Send a direct message from a second account and confirm the preview respects the
-   `show_previews` preference.
-
-Expected failure modes and meanings:
+```bash
+npm run check:android-push     # 35 static checks: Gradle, manifest, Java, web, server, secrets
+npm test                       # 88 tests, including 7 Android-push wiring tests
+```
 
 | Symptom | Meaning |
 |---|---|
-| `FCM_NOT_CONFIGURED` | env var missing or JSON unreadable; the console shows the reason |
-| `401` from Google | service account key rotated or wrong project |
-| `UNREGISTERED` | app uninstalled or token rotated; token is pruned |
-| Delivered but no banner | notification permission denied, or missing channel |
+| `push/status` → `configured: false` | `FCM_SERVICE_ACCOUNT_FILE`/`_JSON` unset or unreadable |
+| `HTTP 403` from FCM | Cloud Messaging API not enabled for the project |
+| `HTTP 404` | Service account belongs to a different project than the token |
+| `400 UNREGISTERED` | App reinstalled / token rotated — it re-registers on next sign-in |
+| No `device_tokens` row | The app never registered (not signed in, no Play services, or bridge error in logcat) |
+| `RideRisePush: Firebase Messaging unavailable` | The APK was built by `npm run apk` (SDK-free) or the device has no Play services |
+| Notification silent/missing on Android 13+ | `POST_NOTIFICATIONS` denied — enable it in Android settings |
+| Tapped notification opens the app but not the screen | Payload had no `deep_link`; the app falls back to `#/notifications` |
 
-## 9. Notification privacy rules already enforced server-side
+## 6. Privacy rules already enforced server-side
 
-- Lock-screen/notification previews are **off by default**; `show_previews` must be enabled
-  per rider.
+- Lock-screen previews are **off by default**; `show_previews` must be enabled per rider.
 - Blocked accounts never trigger a notification for the blocker.
 - Read receipts are hidden when `read_receipts = 0`.
-- Quiet hours suppress push (in-app history still records the event).
-- Push payloads contain a title, short body and deep link — never full message threads.
+- Quiet hours and muted conversations suppress push (in-app history still records the event).
+- Push payloads carry a title, a short body and a deep link — never a full message thread.
+- Deep links are restricted to in-app hash routes before the WebView navigates.
+- **No Firebase Analytics** is initialised, on any platform.
 
-## 10. Costs and limits (planning figures, verify before launch)
+## 7. Costs and limits (planning figures — verify before launch)
 
 | Item | Free tier | Notes |
 |---|---|---|
 | FCM messaging | Free | Google may change terms; check the Firebase pricing page |
 | Firebase project | Spark (free) | Blaze needed only for some Google Cloud APIs |
-| Cloud Messaging legacy APIs | Disabled | Use HTTP v1 (this repo does) |
+| Legacy Cloud Messaging APIs | Disabled | This repo uses HTTP v1 only |
 
-Firebase does not charge for FCM message volume today. Google Cloud quotas (e.g. API calls)
-still apply. Verify current limits on the official pricing page before relying on them.
+## 8. What is still unproven
+
+- Gradle dependency resolution, AAPT2, D8 and signing for the `android/` module (no SDK here).
+- Firebase issuing a registration token on a device.
+- Notification display, channel behaviour and deep-link taps.
+- FCM delivery end to end (needs the service account from step 2).
+
+Each is a normal Android Studio task; the exact steps are in
+[`android/firebase/README.md`](../android/firebase/README.md).

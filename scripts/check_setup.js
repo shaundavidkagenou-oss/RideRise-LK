@@ -203,6 +203,44 @@ if (fcmProject && env('FIREBASE_PROJECT_ID') && fcmProject !== env('FIREBASE_PRO
   );
 }
 
+/* ---------------------- Android client (FCM) config ----------------------- */
+// google-services.json is what lets the Gradle APK obtain an FCM token. It is git-ignored,
+// so a fresh clone legitimately has none — say so without alarming anyone.
+const androidConfigPath = path.join(ROOT, 'android', 'app', 'google-services.json');
+const brandConfig = JSON.parse(fs.readFileSync(path.join(ROOT, 'config', 'brand.config.json'), 'utf8'));
+if (fs.existsSync(androidConfigPath)) {
+  try {
+    const androidConfig = JSON.parse(fs.readFileSync(androidConfigPath, 'utf8'));
+    const packages = (androidConfig.client || []).map(
+      (entry) => (entry.client_info && entry.client_info.android_client_info && entry.client_info.android_client_info.package_name) || ''
+    );
+    const projectId = (androidConfig.project_info && androidConfig.project_info.project_id) || '';
+    if (!packages.includes(brandConfig.packageId)) {
+      fail(
+        'android/app/google-services.json is for a different package',
+        `contains ${packages.filter(Boolean).join(', ') || 'no Android client'}; app is ${brandConfig.packageId}`,
+        'Download the file from the Firebase Android app whose package name is exactly ' + brandConfig.packageId + '.'
+      );
+    } else if (env('FIREBASE_PROJECT_ID') && projectId !== env('FIREBASE_PROJECT_ID')) {
+      warn(
+        'Android app and API server use different Firebase projects',
+        `google-services.json is "${projectId}", FIREBASE_PROJECT_ID is "${env('FIREBASE_PROJECT_ID')}"`,
+        'FCM tokens belong to a project; the server can only push to its own. Use one project for both.'
+      );
+    } else {
+      ok('Android FCM config', `google-services.json for ${brandConfig.packageId} (project "${projectId}")`);
+    }
+  } catch {
+    fail('android/app/google-services.json is not valid JSON', 'could not parse the file', 'Download it again from Firebase; do not edit it by hand.');
+  }
+} else {
+  info(
+    'No Android FCM config yet',
+    'the SDK-free APK needs none; the Gradle build does',
+    'Firebase console -> Project settings -> Your apps -> Android -> download google-services.json -> save as android/app/google-services.json'
+  );
+}
+
 /* --------------------------------- the APK -------------------------------- */
 const apkDir = path.join(ROOT, 'release', 'apk');
 const sumsFile = path.join(apkDir, 'SHA256SUMS.txt');

@@ -4,4 +4,6 @@
     <color name="riderise_charcoal">#FF0E131D</color>
     <color name="riderise_orange">#FFFF6B00</color>
     <color name="riderise_gold">#FFFFD13B</color>
+    <!-- Accent used for notification small-icon backgrounds (Firebase manifest meta-data). -->
+    <color name="rr_accent">#FFFF6B00</color>
 </resources>
