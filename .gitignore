@@ -1,0 +1,18 @@
+# Build outputs and local toolchain (large / machine specific)
+.venv/
+.build/
+node_modules/
+tools/
+android/keystore/
+android/app/src/main/assets/webapp/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+__pycache__/
+.DS_Store
+
+# Never commit signing material or secrets
+*.keystore
+*.jks
+KEYSTORE-CREDENTIALS.txt
+.env

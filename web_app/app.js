@@ -1,0 +1,339 @@
+/* RideRise LK — Application shell: boot, splash, routing, bottom navigation & chrome */
+(function () {
+  'use strict';
+  const RR = window.RR;
+  const { state, t, escapeHtml, logo, toast } = RR;
+
+  const MAIN_TABS = ['home', 'explore', 'stunts', 'guilds', 'profile'];
+
+  function paintChrome() {
+    const headerActions = document.getElementById('headerActionsBar');
+    if (!headerActions) return;
+    const isAuthed = !!state.token;
+    headerActions.innerHTML = isAuthed
+      ? `
+        <button class="btn btn-secondary btn-sm" data-nav="#/notifications" aria-label="Notifications">
+          🔔 ${state.unreadNotifications ? `<span class="badge-counter">${state.unreadNotifications}</span>` : ''}
+        </button>
+        <button class="btn btn-secondary btn-sm" data-nav="#/friends" aria-label="Friends and messages">
+          💬 ${state.unreadMessages ? `<span class="badge-counter">${state.unreadMessages}</span>` : ''}
+        </button>
+        <button class="btn btn-safety btn-sm" data-nav="#/safety" aria-label="Safety Centre">🛡️ <span class="hide-sm">${escapeHtml(t('safetyCentreBtn'))}</span></button>
+        <button class="btn btn-secondary btn-sm hide-xs" data-nav="#/parts" aria-label="Parts catalog">🛒 <span class="hide-sm">Parts</span></button>
+        <button class="btn btn-secondary btn-sm hide-xs" data-nav="#/events" aria-label="Studio events">📅 <span class="hide-sm">Events</span></button>
+        ${state.account && ['admin', 'moderator'].includes(state.account.role) ? '<button class="btn btn-secondary btn-sm" data-nav="#/admin">🛠️ Admin</button>' : ''}
+        <button class="btn btn-secondary btn-sm" data-nav="#/settings" aria-label="Settings">⚙</button>
+        <button class="btn btn-secondary btn-sm" id="headerSignOut" aria-label="Sign out">Sign out</button>`
+      : `<button class="btn btn-primary btn-sm" id="headerSignIn">Sign in with Google</button>
+         <button class="btn btn-safety btn-sm" data-nav="#/safety">🛡️ Safety</button>`;
+
+    headerActions.querySelectorAll('[data-nav]').forEach((b) =>
+      b.addEventListener('click', () => (location.hash = b.dataset.nav))
+    );
+    const signOut = headerActions.querySelector('#headerSignOut');
+    if (signOut)
+      signOut.addEventListener('click', () => {
+        RR.setToken('');
+        state.account = null;
+        state.profile = null;
+        toast('Signed out. Session cleared from this device.', 'success');
+        location.hash = '#/welcome';
+      });
+    const signIn = headerActions.querySelector('#headerSignIn');
+    if (signIn) signIn.addEventListener('click', () => window.RRAuth.openGoogleSignIn());
+
+    // i18n labels
+    const setText = (id, text) => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = text;
+    };
+    setText('i18nStudioBy', t('studioBy'));
+    setText('navLabelHome', t('navHome'));
+    setText('navLabelExplore', t('navExplore'));
+    setText('navLabelStunts', t('navStunts'));
+    setText('navLabelGuilds', t('navGuilds'));
+    setText('navLabelProfile', t('navProfile'));
+    document.title = `${t('appName')} — ${t('studioBy')}`;
+  }
+
+  function selectBottomTab(tab) {
+    document.querySelectorAll('.bottom-nav-item').forEach((item) => {
+      const active = item.dataset.tab === tab;
+      item.classList.toggle('active', active);
+      item.setAttribute('aria-current', active ? 'page' : 'false');
+    });
+  }
+
+  function renderServerSetup(viewport) {
+    viewport.innerHTML = `
+      <section class="welcome-hero" style="grid-template-columns:1fr;max-width:720px;margin:0 auto">
+        <div class="welcome-copy">
+          <div style="display:flex;align-items:center;gap:14px;margin-bottom:10px">
+            ${logo(56)}
+            <div><div class="welcome-tagline">RIDE / STUNT / CONNECT</div>
+            <div class="muted" style="font-size:.76rem">BY SHAUN DAVID STUDIOS</div></div>
+          </div>
+          <h1 class="welcome-title" style="font-size:1.7rem">Connect your ride server</h1>
+          <p class="welcome-sub">This Android build talks to the RideRise LK backend for accounts, feeds, guilds and moderation. Enter the HTTPS address of your deployment once — it is saved on this device.</p>
+          <div class="card" style="margin-top:16px">
+            <div class="form-group">
+              <label class="form-label" for="setupApiBase">RideRise LK API base URL</label>
+              <input class="form-input" id="setupApiBase" placeholder="https://your-riderise-api.example" value="${escapeHtml(state.apiBase || '')}" autocomplete="url" />
+              <div class="hint">Test it in a browser first: <code>/api/health</code> should return JSON.</div>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <button class="btn btn-primary" id="setupConnect">Save &amp; test connection</button>
+              <button class="btn btn-safety" data-nav-safety>Safety Centre</button>
+            </div>
+            <div id="setupResult" class="hint" style="margin-top:10px"></div>
+          </div>
+          <div class="callout callout-warn" style="margin-top:14px">
+            <strong>Never ride stunts on public roads, in traffic or near pedestrians.</strong>
+            Wear a certified helmet and inspect your bike before every session.
+          </div>
+          <p class="welcome-fineprint">Deployment steps are in <code>docs/BUILD_INSTRUCTIONS.md</code>. Nothing is uploaded until you connect and sign in.</p>
+        </div>
+      </section>`;
+
+    viewport.querySelector('[data-nav-safety]').addEventListener('click', () => (location.hash = '#/safety'));
+    viewport.querySelector('#setupConnect').addEventListener('click', async () => {
+      const input = viewport.querySelector('#setupApiBase');
+      const result = viewport.querySelector('#setupResult');
+      const url = input.value.trim().replace(/\/$/, '');
+      if (!/^https?:\/\//.test(url)) {
+        result.textContent = 'Enter a full URL starting with https://';
+        result.style.color = 'var(--danger-red)';
+        return;
+      }
+      result.textContent = 'Testing connection…';
+      result.style.color = 'var(--text-secondary)';
+      try {
+        const res = await fetch(`${url}/api/health`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const health = await res.json();
+        if (window.RRAndroid && window.RRAndroid.setApiBase) window.RRAndroid.setApiBase(url);
+        localStorage.setItem(RR.STORAGE_API_BASE, url);
+        state.apiBase = url;
+        result.textContent = `Connected to ${health.app} · Phase ${health.phase} ✓`;
+        result.style.color = 'var(--success-green)';
+        toast('Server connected. Sign in to continue.', 'success');
+        await RR.refreshSession().catch(() => {});
+        setTimeout(() => (location.hash = '#/welcome'), 700);
+      } catch (err) {
+        result.textContent = `Connection failed: ${err.message}. Check the address, TLS certificate and that the server is running.`;
+        result.style.color = 'var(--danger-red)';
+      }
+    });
+  }
+
+  function route() {
+    const viewport = document.getElementById('mainViewport');
+    const hash = location.hash.replace(/^#/, '') || '/home';
+    const [pathPart, query = ''] = hash.split('?');
+    const segments = pathPart.split('/').filter(Boolean);
+    const root = segments[0] || 'home';
+
+    if (window.scrollY > 0) window.scrollTo({ top: 0, behavior: state.reducedMotion ? 'auto' : 'smooth' });
+    paintChrome();
+
+    // Fresh Android install with no configured backend: onboarding-first experience.
+    if (RR.isAndroidShell() && !state.apiBase && root !== 'safety' && root !== 'settings') {
+      selectBottomTab('');
+      renderServerSetup(viewport);
+      return;
+    }
+
+    if (!state.token && !['welcome', 'safety', 'admin'].includes(root)) {
+      selectBottomTab('home');
+      window.RRAuth.renderWelcome(viewport);
+      return;
+    }
+
+    if (MAIN_TABS.includes(root)) {
+      selectBottomTab(root);
+    } else {
+      selectBottomTab('');
+    }
+
+    switch (root) {
+      case 'welcome':
+        window.RRAuth.renderWelcome(viewport);
+        break;
+      case 'onboarding':
+        window.RRAuth.renderOnboarding(viewport);
+        break;
+      case 'home':
+        window.RRFeed.renderHome(viewport);
+        break;
+      case 'explore':
+        window.RRExplore.renderExplore(viewport);
+        break;
+      case 'stunts':
+        window.RRStunts.renderStunts(viewport);
+        break;
+      case 'guilds':
+        window.RRGuilds.renderGuilds(viewport);
+        break;
+      case 'guild':
+        window.RRGuilds.renderGuildDetail(viewport, segments[1]);
+        break;
+      case 'profile':
+        window.RRProfile.renderProfile(viewport);
+        break;
+      case 'user':
+        window.RRProfile.renderProfile(viewport, segments[1]);
+        break;
+      case 'settings':
+        window.RRProfile.renderSettings(viewport);
+        break;
+      case 'friends':
+        window.RRSocial.renderFriends(viewport, query);
+        break;
+      case 'parts':
+        window.RRExplore.renderParts(viewport);
+        break;
+      case 'events':
+        window.RRExplore.renderEvents(viewport);
+        break;
+      case 'safety':
+        window.RRExplore.renderSafety(viewport);
+        break;
+      case 'notifications':
+        window.RRExplore.renderNotifications(viewport);
+        break;
+      case 'admin':
+        window.RRAdmin.renderAdmin(viewport);
+        break;
+      default:
+        viewport.innerHTML = `<div class="card">${RR.emptyState({
+          icon: '🧭',
+          title: 'Page not found',
+          body: 'That route does not exist in RideRise LK Phase 1.',
+          actionHtml: '<button class="btn btn-primary" onclick="location.hash=\'#/home\'">Back to the feed</button>'
+        })}</div>`;
+    }
+  }
+
+  function wireShell() {
+    document.querySelectorAll('.bottom-nav-item').forEach((item) =>
+      item.addEventListener('click', () => {
+        location.hash = `#/${item.dataset.tab}`;
+        selectBottomTab(item.dataset.tab);
+      })
+    );
+
+    if (RR.isAndroidShell()) {
+      // The web bundle is already installed on the device — hide download links.
+      document.querySelectorAll('.apk-download').forEach((el) => {
+        el.hidden = true;
+        el.style.display = 'none';
+      });
+    }
+
+    const localeSelect = document.getElementById('localeSelect');
+    if (localeSelect) {
+      localeSelect.value = state.locale;
+      localeSelect.addEventListener('change', async () => {
+        RR.setLocale(localeSelect.value);
+        paintChrome();
+        if (state.token) {
+          try {
+            await RR.api('/api/profile', { method: 'PUT', body: { locale: localeSelect.value } });
+          } catch (e) {
+            /* offline is fine — preference is stored locally */
+          }
+        }
+        route();
+      });
+    }
+
+    const motionBtn = document.getElementById('toggleReducedMotionBtn');
+    if (motionBtn) {
+      const paint = () => {
+        motionBtn.textContent = state.reducedMotion ? 'Motion: Reduced' : 'Motion: Standard';
+        motionBtn.classList.toggle('btn-primary', state.reducedMotion);
+      };
+      paint();
+      motionBtn.addEventListener('click', () => {
+        RR.setReducedMotion(!state.reducedMotion);
+        paint();
+        toast(state.reducedMotion ? 'Reduced motion enabled.' : 'Standard motion enabled.', 'info', 2200);
+      });
+    }
+
+    const contrastBtn = document.getElementById('toggleContrastBtn');
+    if (contrastBtn)
+      contrastBtn.addEventListener('click', () => {
+        RR.setHighContrast(!state.highContrast);
+        toast(state.highContrast ? 'High contrast enabled.' : 'Standard contrast enabled.', 'info', 2200);
+      });
+
+    const brandHome = document.getElementById('headerBrandHome');
+    const goHome = () => (location.hash = state.token ? '#/home' : '#/welcome');
+    brandHome.addEventListener('click', goHome);
+    brandHome.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') goHome();
+    });
+
+    window.addEventListener('hashchange', route);
+
+    if (window.RRAndroid && window.RRAndroid.onBackPressed) {
+      // Native back button handled by the Android shell: it calls history.back() or exits.
+    }
+  }
+
+  async function boot() {
+    RR.setLocale(state.locale);
+    RR.setReducedMotion(state.reducedMotion);
+    RR.setHighContrast(state.highContrast);
+    wireShell();
+    paintChrome();
+
+    // Load public config once (branding, ranks, legal docs)
+    try {
+      state.config = await RR.api('/api/config');
+    } catch (e) {
+      /* App still works; screens that need config will retry. */
+    }
+
+    if (state.token) {
+      try {
+        await RR.refreshSession();
+      } catch (err) {
+        /* keep token; screens will surface the network error with retry */
+      }
+    }
+
+    if (!location.hash) location.hash = state.token ? '#/home' : '#/welcome';
+    route();
+    if (state.account && state.account.onboarding_completed === false) {
+      location.hash = '#/onboarding';
+    }
+
+    // Hide the animated launch splash after first paint
+    const splash = document.getElementById('splashScreen');
+    if (splash) {
+      setTimeout(() => splash.classList.add('hidden'), state.reducedMotion ? 350 : 1900);
+    }
+    state.booted = true;
+
+    // Poll unread counters periodically (cheap, keeps badges honest)
+    if (state.token) {
+      setInterval(() => {
+        RR.refreshSession()
+          .then(() => {
+            if (state.account) paintChrome();
+          })
+          .catch(() => {});
+      }, 60000);
+    }
+  }
+
+  window.RRApp = { paintChrome, route, boot };
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', boot);
+  } else {
+    boot();
+  }
+})();

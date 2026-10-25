@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0" />
+  <title>RideRise LK — By Shaun David Studios</title>
+  <link rel="icon" type="image/png" href="assets/brand/riderise_logo.png" />
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="app-styles.css" />
+</head>
+<body>
+  <!-- Animated Launch Screen with Official Shaun David Studios RideRise LK Badge -->
+  <div id="splashScreen" class="splash-overlay" role="status" aria-label="Loading RideRise LK">
+    <div class="splash-badge-ring">
+      <img src="assets/brand/riderise_logo.png" alt="RideRise LK Official BMX Sunset Badge by Shaun David Studios" class="brand-logo-img" />
+    </div>
+    <div class="splash-title">RIDERISE LK</div>
+    <div class="splash-tagline">RIDE / STUNT / CONNECT</div>
+    <div class="splash-studio">BY SHAUN DAVID STUDIOS • SRI LANKA</div>
+    <div class="splash-loader-track" aria-hidden="true">
+      <div class="splash-loader-bar"></div>
+    </div>
+  </div>
+
+  <!-- Top Deliverable & Accessibility Strip -->
+  <div class="studio-top-strip" role="region" aria-label="Studio Controls and Android APK Downloads">
+    <div class="studio-top-left">
+      <span class="pill-badge pill-orange">PHASE 1 LIVE</span>
+      <span style="color: var(--text-secondary);">Package: <code>lk.shaunstudios.riderise</code></span>
+      <a href="release/apk/riderise-lk-phase1-debug.apk" class="btn btn-sm btn-secondary apk-download" download>
+        ⬇ Debug APK
+      </a>
+      <a href="release/apk/riderise-lk-phase1-release.apk" class="btn btn-sm btn-secondary apk-download apk-release" download>
+        ⬇ Signed Release APK
+      </a>
+    </div>
+    <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+      <label for="localeSelect" class="sr-only" style="font-size:0.75rem; color:var(--text-secondary);">Language:</label>
+      <select id="localeSelect" class="form-select" style="width: auto; padding: 4px 8px; font-size: 0.76rem;" aria-label="Select Language">
+        <option value="en">EN • English</option>
+        <option value="si">SI • සිංහල</option>
+        <option value="ta">TA • தமிழ்</option>
+      </select>
+      <button id="toggleReducedMotionBtn" class="btn btn-sm btn-secondary" type="button" title="Toggle Reduced Motion Accessibility">
+        Motion: Standard
+      </button>
+      <button id="toggleContrastBtn" class="btn btn-sm btn-secondary" type="button" title="Toggle High Contrast">
+        Contrast
+      </button>
+    </div>
+  </div>
+
+  <div class="app-shell">
+    <!-- App Header -->
+    <header class="app-header">
+      <div class="header-brand" id="headerBrandHome" role="button" tabindex="0" aria-label="RideRise LK Home">
+        <img src="assets/brand/riderise_logo.png" alt="RideRise LK Logo" class="header-logo brand-logo-img" />
+        <div class="header-title-block">
+          <h1>RIDERISE <span class="lk-gold">LK</span></h1>
+          <div class="header-subtitle" id="i18nStudioBy">BY SHAUN DAVID STUDIOS</div>
+        </div>
+      </div>
+
+      <div class="header-actions" id="headerActionsBar">
+        <!-- Populated dynamically by app.js -->
+      </div>
+    </header>
+
+    <!-- Main Dynamic Viewport -->
+    <main id="mainViewport" class="main-content" role="main" aria-live="polite">
+      <div class="skeleton"></div>
+      <div class="skeleton"></div>
+    </main>
+
+    <!-- Bottom Navigation Bar (5 Core Tabs per Section 17) -->
+    <nav id="bottomNav" class="bottom-nav" role="navigation" aria-label="Main Bottom Navigation">
+      <button type="button" class="bottom-nav-item active" data-tab="home" aria-label="Home Feed">
+        <span class="bottom-nav-icon">🏠</span>
+        <span id="navLabelHome">Home</span>
+      </button>
+      <button type="button" class="bottom-nav-item" data-tab="explore" aria-label="Explore Catalog, Events and Leaderboards">
+        <span class="bottom-nav-icon">🧭</span>
+        <span id="navLabelExplore">Explore</span>
+      </button>
+      <button type="button" class="bottom-nav-item" data-tab="stunts" aria-label="Stunt Learning Library">
+        <span class="bottom-nav-icon">⚡</span>
+        <span id="navLabelStunts">Stunts</span>
+      </button>
+      <button type="button" class="bottom-nav-item" data-tab="guilds" aria-label="Riding Guilds">
+        <span class="bottom-nav-icon">🛡️</span>
+        <span id="navLabelGuilds">Guilds</span>
+      </button>
+      <button type="button" class="bottom-nav-item" data-tab="profile" aria-label="Rider Profile and Bikes">
+        <span class="bottom-nav-icon">👤</span>
+        <span id="navLabelProfile">Profile</span>
+      </button>
+    </nav>
+  </div>
+
+  <!-- Global Modal Container -->
+  <div id="modalRoot" style="display: none;"></div>
+
+  <!-- Toast Notification Container -->
+  <div id="toastRoot" class="toast-container" aria-live="assertive"></div>
+
+  <script src="i18n.js"></script>
+  <script src="api.js"></script>
+  <script src="views_auth.js"></script>
+  <script src="views_feed.js"></script>
+  <script src="views_stunts.js"></script>
+  <script src="views_guilds.js"></script>
+  <script src="views_profile.js"></script>
+  <script src="views_explore.js"></script>
+  <script src="views_social.js"></script>
+  <script src="views_admin.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

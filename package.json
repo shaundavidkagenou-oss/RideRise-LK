@@ -1,0 +1,25 @@
+{
+  "name": "riderise-lk",
+  "version": "1.0.0",
+  "private": true,
+  "description": "RideRise LK by Shaun David Studios — Phase 1 community, stunt-learning, bike-rating and guild platform for Sri Lankan riders.",
+  "license": "UNLICENSED",
+  "author": "Shaun David Studios",
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "scripts": {
+    "start": "node backend/server.js",
+    "dev": "node --watch backend/server.js",
+    "seed:reset": "rm -f backend/riderise_lk.sqlite backend/riderise_lk.sqlite-shm backend/riderise_lk.sqlite-wal",
+    "test": "node --test tests/api.test.js tests/ui.smoke.test.js tests/ui.flows.test.js",
+    "test:api": "node --test tests/api.test.js",
+    "test:ui": "node --test tests/ui.smoke.test.js tests/ui.flows.test.js",
+    "apk": "bash scripts/build_apk.sh all",
+    "apk:debug": "bash scripts/build_apk.sh debug",
+    "apk:release": "bash scripts/build_apk.sh release"
+  },
+  "devDependencies": {
+    "jsdom": "^30.1.3"
+  }
+}

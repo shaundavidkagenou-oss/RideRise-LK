@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">RideRise LK</string>
+    <string name="safety_notice">RideRise LK — wear a certified helmet, inspect your bike before every ride, and never perform stunts on public roads, in traffic, or near pedestrians.</string>
+    <string name="back_to_exit">Press back again to exit RideRise LK</string>
+    <string name="server_missing">No RideRise LK API server configured yet. Open Settings → Server connection.</string>
+    <string name="notifications_requested">Notification permission handled — FCM token registration is a documented Phase 1 integration point.</string>
+</resources>

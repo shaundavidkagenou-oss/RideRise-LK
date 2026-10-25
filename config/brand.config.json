@@ -1,0 +1,78 @@
+{
+  "appName": "RideRise LK",
+  "tagline": "RIDE / STUNT / CONNECT",
+  "studioName": "Shaun David Studios",
+  "packageId": "lk.shaunstudios.riderise",
+  "versionName": "1.0.0",
+  "versionCode": 1,
+  "phase": "Phase 1 — Community, Stunt Education, Bike Rating, Guilds, Catalog & Official Events",
+  "phase2Planned": [
+    "Live Ride Maps & Group Telemetry (Opt-in Only)",
+    "Guild Group Voice Channels",
+    "Walkie-Talkie Push-to-Talk Mode"
+  ],
+  "minimumAge": 16,
+  "minorAgeRange": [16, 17],
+  "defaultGuildMemberLimit": 50,
+  "maxUploadSizeBytes": 5242880,
+  "rateLimits": {
+    "postsPerWindow": 10,
+    "messagesPerWindow": 30,
+    "friendRequestsPerWindow": 15,
+    "reportsPerWindow": 10,
+    "windowSeconds": 60
+  },
+  "theme": {
+    "backgroundPrimary": "#07090E",
+    "backgroundSecondary": "#10141E",
+    "surfaceCard": "#161C2A",
+    "surfaceElevated": "#1E2638",
+    "brandOrange": "#FF6B00",
+    "brandAmber": "#FFB800",
+    "brandGold": "#FFD13B",
+    "accentCyan": "#00B4D8",
+    "accentBlue": "#1A8CFF",
+    "dangerRed": "#FF3B5C",
+    "successGreen": "#10B981",
+    "warningAmber": "#F59E0B",
+    "textPrimary": "#F8FAFC",
+    "textSecondary": "#94A3B8"
+  },
+  "supportedLocales": [
+    { "code": "en", "name": "English", "nativeName": "English" },
+    { "code": "si", "name": "Sinhala", "nativeName": "සිංහල" },
+    { "code": "ta", "name": "Tamil", "nativeName": "தமிழ்" }
+  ],
+  "sriLankaDistricts": [
+    "Colombo",
+    "Gampaha",
+    "Kalutara (incl. Bentota)",
+    "Kandy",
+    "Matale",
+    "Nuwara Eliya",
+    "Galle",
+    "Matara",
+    "Hambantota",
+    "Jaffna",
+    "Kilinochchi",
+    "Mannar",
+    "Vavuniya",
+    "Mullaitivu",
+    "Batticaloa",
+    "Ampara",
+    "Trincomalee",
+    "Kurunegala",
+    "Puttalam",
+    "Anuradhapura",
+    "Polonnaruwa",
+    "Badulla",
+    "Monaragala",
+    "Ratnapura",
+    "Kegalle"
+  ],
+  "contact": {
+    "safetyEmail": "safety@shaundavidstudios.lk",
+    "privacyEmail": "privacy@shaundavidstudios.lk",
+    "supportEmail": "support@shaundavidstudios.lk"
+  }
+}
