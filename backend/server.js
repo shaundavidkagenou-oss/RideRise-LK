@@ -25,6 +25,15 @@ db.exec('PRAGMA journal_mode = WAL;');
 db.exec('PRAGMA foreign_keys = ON;');
 const schemaSql = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8');
 db.exec(schemaSql);
+
+// Idempotent column migrations for databases created by earlier Phase 1 builds
+function ensureColumn(table, column, definition) {
+  const columns = db.prepare(`PRAGMA table_info(${table})`).all();
+  if (!columns.some((c) => c.name === column)) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  }
+}
+ensureColumn('users_private', 'suspension_until', 'TEXT');
 seedDatabase(db);
 
 // ---------------------------------------------------------------------------
@@ -130,7 +139,7 @@ function getAuthUser(req) {
   const user = db
     .prepare(
       `SELECT u.id, u.email, u.is_minor, u.age_confirmed, u.onboarding_completed,
-              u.terms_accepted_version, u.role, u.account_status, u.suspension_reason,
+              u.terms_accepted_version, u.role, u.account_status, u.suspension_reason, u.suspension_until,
               p.username, p.display_name, p.bio, p.avatar_url, p.district, p.preferred_riding_area,
               p.primary_bike_id, p.xp, p.rank_id, p.profile_visibility, p.hide_from_leaderboards,
               p.allow_friend_requests, p.allow_messages_from, p.notifications_enabled,
@@ -141,6 +150,14 @@ function getAuthUser(req) {
     )
     .get(decoded.userId);
   if (!user || user.account_status === 'deleted') return null;
+  // Temporary suspensions expire automatically
+  if (user.account_status === 'suspended' && user.suspension_until) {
+    if (new Date(user.suspension_until).getTime() <= Date.now()) {
+      db.prepare("UPDATE users_private SET account_status = 'active', suspension_reason = NULL, suspension_until = NULL WHERE id = ?").run(user.id);
+      user.account_status = 'active';
+      user.suspension_reason = null;
+    }
+  }
   return user;
 }
 
@@ -256,6 +273,34 @@ function formatPublicProfile(userId, viewerId = null) {
   const ranks = db.prepare('SELECT * FROM ranks ORDER BY min_xp ASC').all();
   const nextRank = ranks.find((r) => r.min_xp > row.xp) || null;
 
+  // Mutual friends (privacy-aware: only counts/names of accepted friendships the viewer shares)
+  let mutualFriends = { count: 0, names: [] };
+  if (viewerId && viewerId !== userId) {
+    const mine = db
+      .prepare(
+        `SELECT CASE WHEN requester_id = ? THEN addressee_id ELSE requester_id END AS friend_id
+         FROM friendships WHERE status = 'accepted' AND (requester_id = ? OR addressee_id = ?)`
+      )
+      .all(viewerId, viewerId, viewerId)
+      .map((r) => r.friend_id);
+    const theirs = db
+      .prepare(
+        `SELECT CASE WHEN requester_id = ? THEN addressee_id ELSE requester_id END AS friend_id
+         FROM friendships WHERE status = 'accepted' AND (requester_id = ? OR addressee_id = ?)`
+      )
+      .all(userId, userId, userId)
+      .map((r) => r.friend_id);
+    const shared = mine.filter((id) => theirs.includes(id));
+    mutualFriends = {
+      count: shared.length,
+      names: shared
+        .slice(0, 3)
+        .map((id) => db.prepare('SELECT username FROM profiles WHERE user_id = ?').get(id))
+        .filter(Boolean)
+        .map((r) => r.username)
+    };
+  }
+
   // Notice: email, dob_private, google_sub, login tokens are NEVER included here!
   return {
     user_id: row.user_id,
@@ -283,6 +328,7 @@ function formatPublicProfile(userId, viewerId = null) {
     completed_modules_count: completedModulesCount,
     posts_count: postsCount,
     is_friend: isFriend,
+    mutual_friends: mutualFriends,
     restricted_view: false
   };
 }
@@ -301,22 +347,27 @@ function sendJson(res, status, data) {
 
 function readJsonBody(req, maxBytes = 9 * 1024 * 1024) {
   return new Promise((resolve, reject) => {
-    let chunks = [];
+    const chunks = [];
     let total = 0;
+    let tooLarge = false;
     req.on('data', (chunk) => {
       total += chunk.length;
       if (total > maxBytes) {
-        reject(new Error('PAYLOAD_TOO_LARGE'));
-        req.destroy();
+        tooLarge = true;
+        // Drain the request so the client receives a clean 413 instead of a reset socket.
+        if (total > maxBytes * 3) {
+          reject(new Error('PAYLOAD_TOO_LARGE'));
+          req.destroy();
+        }
         return;
       }
       chunks.push(chunk);
     });
     req.on('end', () => {
+      if (tooLarge) return reject(new Error('PAYLOAD_TOO_LARGE'));
       if (total === 0) return resolve({});
       try {
-        const parsed = JSON.parse(Buffer.concat(chunks).toString('utf8'));
-        resolve(parsed);
+        resolve(JSON.parse(Buffer.concat(chunks).toString('utf8')));
       } catch (e) {
         reject(new Error('INVALID_JSON'));
       }
@@ -483,10 +534,17 @@ const server = http.createServer(async (req, res) => {
       }
 
       if (userRow.account_status === 'suspended') {
-        return sendJson(res, 403, {
-          error: 'ACCOUNT_SUSPENDED',
-          message: `This account is currently suspended for violating Community Guidelines: ${userRow.suspension_reason || 'Contact safety@shaundavidstudios.lk for review.'}`
-        });
+        const expired = userRow.suspension_until && new Date(userRow.suspension_until).getTime() <= Date.now();
+        if (expired) {
+          db.prepare("UPDATE users_private SET account_status = 'active', suspension_reason = NULL, suspension_until = NULL WHERE id = ?").run(userRow.id);
+          userRow = db.prepare('SELECT * FROM users_private WHERE id = ?').get(userRow.id);
+        } else {
+          const until = userRow.suspension_until ? ` Suspension ends ${new Date(userRow.suspension_until).toUTCString()}.` : '';
+          return sendJson(res, 403, {
+            error: 'ACCOUNT_SUSPENDED',
+            message: `This account is currently suspended for violating Community Guidelines: ${userRow.suspension_reason || 'Contact safety@shaundavidstudios.lk for review.'}${until}`
+          });
+        }
       }
 
       const token = signToken({ userId: userRow.id, role: userRow.role });
@@ -745,21 +803,29 @@ const server = http.createServer(async (req, res) => {
     if (pathname === '/api/upload/media' && req.method === 'POST') {
       const user = getAuthUser(req);
       if (!user) return sendJson(res, 401, { error: 'UNAUTHENTICATED' });
-      const body = await readJsonBody(req);
+      // Allow the raw request to exceed the decoded limit (base64 + JSON overhead) so the
+      // precise 5 MB / 8 MB media checks below can return a descriptive 413.
+      const body = await readJsonBody(req, 24 * 1024 * 1024);
       const dataUrl = String(body.dataUrl || '');
-      const match = /^data:(image\/(png|jpeg|jpg|webp));base64,([A-Za-z0-9+/=\s]+)$/.exec(dataUrl);
+      const imageMatch = /^data:(image\/(png|jpeg|jpg|webp));base64,([A-Za-z0-9+/=\s]+)$/.exec(dataUrl);
+      const videoMatch = /^data:(video\/mp4);base64,([A-Za-z0-9+/=\s]+)$/.exec(dataUrl);
+      const match = imageMatch || videoMatch;
+      const isVideo = !!videoMatch;
       if (!match) {
         return sendJson(res, 400, {
           error: 'INVALID_MEDIA_TYPE',
-          message: 'Only validated PNG, JPEG, or WebP images under 5 MB are permitted.'
+          message: 'Only validated PNG, JPEG or WebP images (max 5 MB) and MP4 clips (max 8 MB) are permitted.'
         });
       }
-      const base64Payload = match[3].replace(/\s/g, '');
+      const base64Payload = match[isVideo ? 2 : 3].replace(/\s/g, '');
       const decodedBytes = Math.floor((base64Payload.length * 3) / 4) - (base64Payload.endsWith('==') ? 2 : base64Payload.endsWith('=') ? 1 : 0);
-      if (decodedBytes > brandConfig.maxUploadSizeBytes) {
+      const sizeLimit = isVideo ? 8 * 1024 * 1024 : brandConfig.maxUploadSizeBytes;
+      if (decodedBytes > sizeLimit) {
         return sendJson(res, 413, {
           error: 'FILE_TOO_LARGE',
-          message: 'Image exceeds the 5 MB maximum upload size limit.'
+          message: isVideo
+            ? 'Clip exceeds the 8 MB short-video limit. Trim it and try again.'
+            : 'Image exceeds the 5 MB maximum upload size limit.'
         });
       }
       if (decodedBytes < 8) {
@@ -768,9 +834,11 @@ const server = http.createServer(async (req, res) => {
       // Uploads are stored without EXIF/GPS metadata: the client re-encodes images before upload
       return sendJson(res, 200, {
         mediaUrl: `data:${match[1]};base64,${base64Payload}`,
+        mediaType: isVideo ? 'video' : 'image',
         exifStripped: true,
         gpsCoordinatesRemoved: true,
-        sizeBytes: decodedBytes
+        sizeBytes: decodedBytes,
+        moderationNote: isVideo ? 'Short clips are reviewed under the same Community Guidelines as posts.' : null
       });
     }
 
@@ -1836,17 +1904,96 @@ const server = http.createServer(async (req, res) => {
       }
 
       if (req.method === 'PUT' && !action) {
-        if (!viewer || !isOwnerOrMod) {
-          return sendJson(res, 403, { error: 'FORBIDDEN', message: 'Only guild owners or moderators can edit guild info.' });
+        const isPlatformAdmin = viewer && viewer.role === 'admin';
+        if (!viewer || (!isOwnerOrMod && !isPlatformAdmin)) {
+          return sendJson(res, 403, { error: 'FORBIDDEN', message: 'Only guild owners, moderators or studio administrators can edit guild info.' });
         }
         const body = await readJsonBody(req);
-        db.prepare('UPDATE guilds SET description = ?, announcement = ?, privacy_type = ? WHERE id = ?').run(
+        let memberLimit = guild.member_limit;
+        if (isPlatformAdmin && body.member_limit !== undefined) {
+          const requested = Number(body.member_limit);
+          if (Number.isFinite(requested) && requested >= 2 && requested <= 500) {
+            memberLimit = Math.floor(requested);
+          } else {
+            return sendJson(res, 400, { error: 'INVALID_MEMBER_LIMIT', message: 'Member limit must be between 2 and 500.' });
+          }
+        }
+        db.prepare('UPDATE guilds SET description = ?, announcement = ?, privacy_type = ?, member_limit = ? WHERE id = ?').run(
           String(body.description ?? guild.description),
           String(body.announcement ?? guild.announcement),
           body.privacy_type === 'private' ? 'private' : 'public',
+          memberLimit,
           guildId
         );
-        return sendJson(res, 200, { message: 'Guild updated.' });
+        return sendJson(res, 200, { message: 'Guild updated.', member_limit: memberLimit });
+      }
+
+      if (req.method === 'POST' && action === 'invite') {
+        if (!viewer || !isOwnerOrMod) {
+          return sendJson(res, 403, { error: 'FORBIDDEN', message: 'Only guild owners or moderators can invite riders.' });
+        }
+        const body = await readJsonBody(req);
+        const username = String(body.username || '').trim().toLowerCase().replace(/^@/, '');
+        const target = db.prepare('SELECT user_id FROM profiles WHERE username = ?').get(username);
+        if (!target) {
+          return sendJson(res, 404, { error: 'USER_NOT_FOUND', message: `No rider found with username @${username}.` });
+        }
+        if (isBlockedEitherWay(viewer.id, target.user_id)) {
+          return sendJson(res, 403, { error: 'USER_BLOCKED', message: 'That rider cannot be invited.' });
+        }
+        const existingMembership = db
+          .prepare('SELECT status FROM guild_memberships WHERE guild_id = ? AND user_id = ?')
+          .get(guildId, target.user_id);
+        if (existingMembership && existingMembership.status === 'active') {
+          return sendJson(res, 409, { error: 'ALREADY_MEMBER', message: `@${username} is already a member of this guild.` });
+        }
+        const activeCount = db
+          .prepare("SELECT COUNT(*) as c FROM guild_memberships WHERE guild_id = ? AND status = 'active'")
+          .get(guildId).c;
+        if (activeCount >= guild.member_limit) {
+          return sendJson(res, 400, { error: 'GUILD_FULL', message: 'This guild has reached its member limit.' });
+        }
+        const now = new Date().toISOString();
+        db.prepare(
+          "INSERT OR REPLACE INTO guild_memberships (guild_id, user_id, role, status, joined_at) VALUES (?, ?, 'member', 'invited', ?)"
+        ).run(guildId, target.user_id, now);
+        db.prepare(
+          'INSERT INTO notifications (id, user_id, type, title, body, reference_type, reference_id, is_read, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)'
+        ).run(
+          'notif_' + Date.now() + '_inv',
+          target.user_id,
+          'guild_invite',
+          'Guild invitation',
+          `@${viewer.username} invited you to join "${guild.name}".`,
+          'guild',
+          guildId,
+          now
+        );
+        return sendJson(res, 201, { message: `Invitation sent to @${username}.` });
+      }
+
+      if (req.method === 'POST' && action === 'invite-response') {
+        if (!viewer || !myMembership || myMembership.status !== 'invited') {
+          return sendJson(res, 400, { error: 'NO_PENDING_INVITE', message: 'There is no pending invitation for this guild.' });
+        }
+        const body = await readJsonBody(req);
+        const decision = body.decision === 'accept' ? 'accept' : 'decline';
+        if (decision === 'decline') {
+          db.prepare('DELETE FROM guild_memberships WHERE guild_id = ? AND user_id = ?').run(guildId, viewer.id);
+          return sendJson(res, 200, { message: `You declined the invitation to ${guild.name}.` });
+        }
+        const activeCount = db
+          .prepare("SELECT COUNT(*) as c FROM guild_memberships WHERE guild_id = ? AND status = 'active'")
+          .get(guildId).c;
+        if (activeCount >= guild.member_limit) {
+          return sendJson(res, 400, { error: 'GUILD_FULL', message: 'This guild is now full.' });
+        }
+        db.prepare("UPDATE guild_memberships SET status = 'active', joined_at = ? WHERE guild_id = ? AND user_id = ?").run(
+          new Date().toISOString(),
+          guildId,
+          viewer.id
+        );
+        return sendJson(res, 200, { message: `You joined ${guild.name}.` });
       }
 
       if (req.method === 'POST' && action === 'join') {
@@ -2307,6 +2454,9 @@ const server = http.createServer(async (req, res) => {
         const now = new Date().toISOString();
         const decision = body.decision || 'action_taken'; // action_taken | dismissed
         const note = String(body.resolution_note || 'Reviewed by moderation team.');
+        // accountAction: 'none' | 'warn' | 'suspend'; suspensionDays 1..365 or 'permanent'
+        const accountAction = ['none', 'warn', 'suspend'].includes(body.accountAction) ? body.accountAction : 'none';
+        const suspensionDays = body.suspensionDays === 'permanent' ? null : Math.min(365, Math.max(1, Number(body.suspensionDays) || 7));
 
         if (decision === 'action_taken') {
           if (rep.target_type === 'post') {
@@ -2315,12 +2465,41 @@ const server = http.createServer(async (req, res) => {
             db.prepare("UPDATE comments SET moderation_status = 'removed' WHERE id = ?").run(rep.target_id);
           } else if (rep.target_type === 'guild') {
             db.prepare("UPDATE guilds SET moderation_status = 'restricted' WHERE id = ?").run(rep.target_id);
-          } else if (rep.target_type === 'user' && body.suspendUser) {
-            db.prepare("UPDATE users_private SET account_status = 'suspended', suspension_reason = ? WHERE id = ?").run(
+          }
+        }
+
+        // Account actions may also be applied to a reported user (or the author of reported content)
+        let targetUserId = null;
+        if (rep.target_type === 'user') targetUserId = rep.target_id;
+        if (rep.target_type === 'post') {
+          const reportedPost = db.prepare('SELECT user_id FROM posts WHERE id = ?').get(rep.target_id);
+          if (reportedPost) targetUserId = reportedPost.user_id;
+        }
+        if (accountAction !== 'none' && targetUserId) {
+          if (accountAction === 'warn') {
+            db.prepare("UPDATE users_private SET account_status = CASE WHEN account_status = 'active' THEN 'warned' ELSE account_status END WHERE id = ?").run(targetUserId);
+          } else {
+            const until = body.suspensionDays === 'permanent' || suspensionDays === null
+              ? null
+              : new Date(Date.now() + suspensionDays * 86400000).toISOString();
+            db.prepare("UPDATE users_private SET account_status = 'suspended', suspension_reason = ?, suspension_until = ? WHERE id = ?").run(
               note,
-              rep.target_id
+              until,
+              targetUserId
             );
           }
+          db.prepare(
+            'INSERT INTO notifications (id, user_id, type, title, body, reference_type, reference_id, is_read, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)'
+          ).run(
+            'notif_' + Date.now() + '_adm',
+            targetUserId,
+            'moderation_update',
+            accountAction === 'warn' ? 'Community Guidelines warning' : 'Account suspended',
+            `${note}${accountAction === 'suspend' ? ` Suspension length: ${body.suspensionDays === 'permanent' ? 'permanent' : suspensionDays + ' days'}.` : ''}`,
+            'report',
+            rep.id,
+            now
+          );
         }
 
         db.prepare('UPDATE reports SET status = ?, resolution_note = ?, resolved_by_admin_id = ?, resolved_at = ? WHERE id = ?').run(

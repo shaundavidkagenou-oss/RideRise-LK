@@ -48,6 +48,7 @@
           <div class="chip-bar" style="margin:0" id="leaderScopeChips">
             <button class="chip active" data-scope="overall">Overall</button>
             <button class="chip" data-scope="district">My district</button>
+            <button class="chip" data-scope="guild" id="guildScopeChip" hidden>My guild</button>
           </div>
         </div>
         <div id="leaderboardBody">${skeletonList(2)}</div>
@@ -61,28 +62,46 @@
         <div id="riderSearchResults"></div>
       </section>`;
 
-    viewport.querySelectorAll('[data-scope]').forEach((chip) =>
-      chip.addEventListener('click', () => {
-        viewport.querySelectorAll('[data-scope]').forEach((c) => c.classList.toggle('active', c === chip));
-        loadLeaderboard(chip.dataset.scope);
-      })
-    );
     let timer = null;
     viewport.querySelector('#riderSearch').addEventListener('input', (e) => {
       clearTimeout(timer);
       const q = e.target.value.trim();
       timer = setTimeout(() => searchRiders(q), 350);
     });
+    // Enable the guild leaderboard only when the rider belongs to an active guild
+    try {
+      const guildData = await api('/api/guilds');
+      const myGuild = (guildData.guilds || []).find((g) => g.my_status === 'active');
+      if (myGuild) {
+        const chip = viewport.querySelector('#guildScopeChip');
+        chip.hidden = false;
+        chip.dataset.guildId = myGuild.id;
+        chip.textContent = `My guild · ${myGuild.name.split(' ')[0]}`;
+        chip.addEventListener('click', () => {
+          viewport.querySelectorAll('[data-scope]').forEach((c) => c.classList.toggle('active', c === chip));
+          loadLeaderboard('guild', myGuild.id);
+        });
+        viewport.querySelectorAll('[data-scope]').forEach((c) => {
+          if (c !== chip) c.addEventListener('click', () => {
+            viewport.querySelectorAll('[data-scope]').forEach((x) => x.classList.toggle('active', x === c));
+            loadLeaderboard(c.dataset.scope);
+          });
+        });
+      }
+    } catch (e) {
+      /* leaderboard guild scope is optional */
+    }
     await loadLeaderboard('overall');
   }
 
-  async function loadLeaderboard(scope) {
+  async function loadLeaderboard(scope, guildId) {
     const host = document.getElementById('leaderboardBody');
     if (!host) return;
     host.innerHTML = skeletonList(2);
     try {
       const params = new URLSearchParams({ scope });
       if (scope === 'district' && state.profile) params.set('district', state.profile.district);
+      if (scope === 'guild' && guildId) params.set('guildId', guildId);
       const data = await api(`/api/leaderboards?${params.toString()}`);
       if (!data.leaders.length) {
         host.innerHTML = '<p class="muted">No leaderboard entries yet for this filter.</p>';

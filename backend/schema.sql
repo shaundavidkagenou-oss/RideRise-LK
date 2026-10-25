@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS users_private (
   role TEXT NOT NULL DEFAULT 'rider' CHECK (role IN ('rider', 'moderator', 'admin')),
   account_status TEXT NOT NULL DEFAULT 'active' CHECK (account_status IN ('active', 'warned', 'suspended', 'deleted')),
   suspension_reason TEXT,
+  suspension_until TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );

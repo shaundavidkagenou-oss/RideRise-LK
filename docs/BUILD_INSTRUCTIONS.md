@@ -128,7 +128,7 @@ Edit `config/brand.config.json` → `packageId`, then also update
 ## 4. Running the automated tests
 
 ```bash
-npm test           # 40 tests: 29 API + 11 end-to-end UI
+npm test           # 42 tests: 30 API + 12 end-to-end UI
 npm run test:api
 npm run test:ui
 ```

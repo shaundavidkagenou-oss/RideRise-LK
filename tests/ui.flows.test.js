@@ -269,3 +269,33 @@ test('FLOW 7 — non-friends cannot reach private messaging from the UI', async 
     dom.window.close();
   }
 });
+
+test('FLOW 8 — guild owner invites a rider and the invitation reaches them', async () => {
+  const { window, document, errors, dom } = await bootAs('kasun');
+  try {
+    window.location.hash = '#/guild/gld_southern_bmx';
+    await waitFor(() => document.querySelector('.guild-hero'), 15000, 'guild detail');
+    const inviteBtn = document.getElementById('inviteRiderBtn');
+    assert.ok(inviteBtn, 'guild owner must see the invite action');
+    click(window, inviteBtn);
+    await waitFor(() => document.getElementById('inviteUsername'), 6000, 'invite dialog');
+    setValue(window, document.getElementById('inviteUsername'), 'roshan_dirtjump');
+    click(window, document.getElementById('sendInviteBtn'));
+    await waitFor(() => /Invitation sent|already/i.test(document.querySelector('.toast')?.textContent || ''), 12000, 'invite toast');
+
+    // The invited rider sees the pending invitation in their guild list
+    const invitee = await fetch(`${baseUrl}/api/auth/google`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ presetAccount: 'roshan' })
+    }).then((r) => r.json());
+    const guilds = await fetch(`${baseUrl}/api/guilds`, {
+      headers: { Authorization: `Bearer ${invitee.token}` }
+    }).then((r) => r.json());
+    const invited = guilds.guilds.find((g) => g.id === 'gld_southern_bmx');
+    assert.ok(['invited', 'active'].includes(invited.my_status), 'invitation should be recorded for the rider');
+    assert.equal(errors.length, 0, errors.join(' | '));
+  } finally {
+    dom.window.close();
+  }
+});

@@ -40,7 +40,7 @@ bicycle stunt riders, built for **Shaun David Studios**.
 
 ```bash
 npm start                 # http://localhost:3000  (SQLite auto-created & seeded)
-npm test                  # 40 automated API + UI tests
+npm test                  # 42 automated API + UI tests
 npm run apk               # rebuild signed debug + release APKs
 ```
 
@@ -159,7 +159,7 @@ Detailed docs: [architecture](docs/ARCHITECTURE.md) · [database](docs/DATABASE_
 
 **Fully implemented and tested here:** every feature listed in section 3, the backend,
 database, authorization rules, XP and bike-rating engines, moderation workflow, APK
-build and signing, and 40 automated tests (29 API + 11 end-to-end UI).
+build and signing, and 42 automated tests (30 API + 12 end-to-end UI).
 
 **Requires configuration you must supply (integration points are built, not mocked):**
 

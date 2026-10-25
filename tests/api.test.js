@@ -1028,3 +1028,135 @@ test('29. Google ID-token path rejects unverifiable credentials when configured'
   assert.ok([401, 503].includes(malformed.status));
   assert.equal(malformed.json.token, undefined);
 });
+
+test('30. Guild invitations, mutual friends, video uploads and suspension lifecycle', async () => {
+  // --- Owner invites a rider; invitee accepts -------------------------------------
+  const invite = await call('/api/guilds/gld_southern_bmx/invite', {
+    method: 'POST',
+    token: tokens.kasun,
+    body: { username: 'roshan_dirtjump' }
+  });
+  assert.equal(invite.status, 201);
+
+  const invitedList = await call('/api/guilds', { token: tokens.roshan });
+  const invitedGuild = invitedList.json.guilds.find((g) => g.id === 'gld_southern_bmx');
+  assert.equal(invitedGuild.my_status, 'invited');
+
+  // A non-moderator cannot invite
+  const unauthorisedInvite = await call('/api/guilds/gld_southern_bmx/invite', {
+    method: 'POST',
+    token: tokens.roshan,
+    body: { username: 'kasun_bmx_lk' }
+  });
+  assert.equal(unauthorisedInvite.status, 403);
+
+  const accept = await call('/api/guilds/gld_southern_bmx/invite-response', {
+    method: 'POST',
+    token: tokens.roshan,
+    body: { decision: 'accept' }
+  });
+  assert.equal(accept.status, 200);
+  const afterAccept = await call('/api/guilds/gld_southern_bmx', { token: tokens.roshan });
+  assert.equal(afterAccept.json.canViewInternal, true);
+
+  // --- Mutual friends -------------------------------------------------------------
+  // Establish a shared friend (admin) so the viewer shares a connection with the target.
+  await call('/api/friends/request', { method: 'POST', token: tokens.roshan, body: { targetUserId: 'usr_admin_nethmi' } });
+  const adminFriends = await call('/api/friends', { token: tokens.admin });
+  const pendingFromRoshan = adminFriends.json.incoming.find((f) => f.user_id === 'usr_roshan');
+  if (pendingFromRoshan) {
+    await call(`/api/friends/${pendingFromRoshan.friendship_id}`, { method: 'POST', token: tokens.admin, body: { action: 'accept' } });
+  }
+  const mutual = await call('/api/profiles/usr_roshan', { token: tokens.kasun });
+  assert.equal(mutual.status, 200);
+  assert.ok(mutual.json.profile.mutual_friends.count >= 1, 'expected at least one mutual friend');
+  assert.ok(Array.isArray(mutual.json.profile.mutual_friends.names));
+
+  // --- Video uploads --------------------------------------------------------------
+  const video = await call('/api/upload/media', {
+    method: 'POST',
+    token: tokens.kasun,
+    body: { dataUrl: `data:video/mp4;base64,${'A'.repeat(4000)}` }
+  });
+  assert.equal(video.status, 200);
+  assert.equal(video.json.mediaType, 'video');
+  assert.equal(video.json.gpsCoordinatesRemoved, true);
+
+  const oversizedClip = await call('/api/upload/media', {
+    method: 'POST',
+    token: tokens.kasun,
+    body: { dataUrl: `data:video/mp4;base64,${'A'.repeat(12000000)}` }
+  });
+  assert.equal(oversizedClip.status, 413);
+
+  // --- Warning + temporary suspension lifecycle -----------------------------------
+  const warnTarget = await call('/api/auth/google', { method: 'POST', body: { email: 'warn.target@example.com' } });
+  const warnToken = warnTarget.json.token;
+  const onboard = await call('/api/auth/onboarding', {
+    method: 'POST',
+    token: warnToken,
+    body: {
+      confirmAge16Plus: true,
+      dob: '1994-04-04',
+      acceptTerms: true,
+      acceptPrivacy: true,
+      acceptGuidelines: true,
+      acceptSafetyNotice: true,
+      username: 'warn_target',
+      displayName: 'Warn Target',
+      district: 'Matale'
+    }
+  });
+  assert.equal(onboard.status, 200);
+  const targetId = onboard.json.profile.user_id;
+
+  const report = await call('/api/reports', {
+    method: 'POST',
+    token: tokens.kasun,
+    body: { target_type: 'user', target_id: targetId, reason_category: 'bullying_harassment', details: 'Repeated hostile comments.' }
+  });
+  assert.equal(report.status, 201);
+
+  const warn = await call(`/api/admin/reports/${report.json.reportId}/resolve`, {
+    method: 'POST',
+    token: tokens.admin,
+    body: { decision: 'action_taken', resolution_note: 'Warning issued for hostile language.', accountAction: 'warn' }
+  });
+  assert.equal(warn.status, 200);
+  const warnedRow = db.prepare('SELECT account_status FROM users_private WHERE id = ?').get(targetId);
+  assert.equal(warnedRow.account_status, 'warned');
+
+  // Temporary suspension with a 1-day window, then simulate expiry
+  const report2 = await call('/api/reports', {
+    method: 'POST',
+    token: tokens.kasun,
+    body: { target_type: 'user', target_id: targetId, reason_category: 'threats_violence', details: 'Escalated after warning.' }
+  });
+  const suspend = await call(`/api/admin/reports/${report2.json.reportId}/resolve`, {
+    method: 'POST',
+    token: tokens.admin,
+    body: { decision: 'action_taken', resolution_note: 'Temporary suspension for threats.', accountAction: 'suspend', suspensionDays: 1 }
+  });
+  assert.equal(suspend.status, 200);
+
+  const suspendedLogin = await call('/api/auth/google', { method: 'POST', body: { email: 'warn.target@example.com' } });
+  assert.equal(suspendedLogin.status, 403);
+  assert.match(suspendedLogin.json.message, /suspended/i);
+
+  // Expire the suspension and confirm automatic reinstatement
+  db.prepare('UPDATE users_private SET suspension_until = ? WHERE id = ?').run(new Date(Date.now() - 60000).toISOString(), targetId);
+  const reopened = await call('/api/auth/google', { method: 'POST', body: { email: 'warn.target@example.com' } });
+  assert.equal(reopened.status, 200);
+  assert.equal(reopened.json.account.email, 'warn.target@example.com');
+
+  // --- Studio admin can adjust a guild member limit --------------------------------
+  const limit = await call('/api/guilds/gld_colombo_builders', {
+    method: 'PUT',
+    token: tokens.admin,
+    body: { member_limit: 25 }
+  });
+  assert.equal(limit.status, 200);
+  assert.equal(limit.json.member_limit, 25);
+  const guildRow = db.prepare('SELECT member_limit FROM guilds WHERE id = ?').get('gld_colombo_builders');
+  assert.equal(guildRow.member_limit, 25);
+});

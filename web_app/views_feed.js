@@ -473,6 +473,7 @@
       /* keep empty lists; the composer still works */
     }
     const mediaUrls = existing && existing.media_urls ? existing.media_urls.slice() : [];
+    let mediaKind = existing && existing.media_type ? existing.media_type : 'none';
 
     modal({
       title: existing ? 'Edit post' : 'Publish to the community',
@@ -528,7 +529,7 @@
         <div class="form-group">
           <label class="form-label" for="postMedia">Photos or a short clip</label>
           <input class="form-input" type="file" id="postMedia" accept="image/*,video/mp4" ${existing ? 'disabled' : ''} />
-          <div class="hint">Images up to 5 MB (PNG/JPEG/WebP). Short MP4 clips are subject to moderation. EXIF GPS metadata is stripped before upload.</div>
+          <div class="hint">Images up to 5 MB (PNG/JPEG/WebP) or one MP4 clip up to 8 MB. Short clips are moderated under the same guidelines as posts. EXIF GPS metadata is stripped.</div>
           <div id="uploadProgress" class="upload-progress" hidden><div id="uploadProgressBar"></div></div>
           <div id="mediaPreview" class="media-preview">
             ${mediaUrls.map((u) => `<img src="${escapeHtml(u)}" alt="Attached media" />`).join('')}
@@ -547,8 +548,20 @@
         fileInput.addEventListener('change', async () => {
           const file = fileInput.files && fileInput.files[0];
           if (!file) return;
-          if (file.size > 5 * 1024 * 1024) {
-            toast('File exceeds the 5 MB limit. Please choose a smaller image.', 'error');
+          const isVideo = file.type === 'video/mp4';
+          const limit = isVideo ? 8 * 1024 * 1024 : 5 * 1024 * 1024;
+          if (file.size > limit) {
+            toast(
+              isVideo
+                ? 'Clip exceeds the 8 MB short-video limit. Trim it and try again.'
+                : 'Image exceeds the 5 MB limit. Please choose a smaller image.',
+              'error'
+            );
+            fileInput.value = '';
+            return;
+          }
+          if (!isVideo && !file.type.startsWith('image/')) {
+            toast('Only images (PNG/JPEG/WebP) or MP4 clips can be attached.', 'error');
             fileInput.value = '';
             return;
           }
@@ -563,8 +576,17 @@
             bar.style.width = '100%';
             mediaUrls.length = 0;
             mediaUrls.push(uploaded.mediaUrl);
-            root.querySelector('#mediaPreview').innerHTML = `<img src="${escapeHtml(uploaded.mediaUrl)}" alt="Attached media preview" />`;
-            toast('Media validated and processed — EXIF location data removed.', 'success', 3000);
+            mediaKind = uploaded.mediaType || (isVideo ? 'video' : 'image');
+            root.querySelector('#mediaPreview').innerHTML = isVideo
+              ? `<video controls preload="metadata" src="${escapeHtml(uploaded.mediaUrl)}" aria-label="Attached clip preview"></video>`
+              : `<img src="${escapeHtml(uploaded.mediaUrl)}" alt="Attached media preview" />`;
+            toast(
+              isVideo
+                ? 'Short clip validated. Clips are moderated under the same guidelines as posts.'
+                : 'Media validated and processed — EXIF location data removed.',
+              'success',
+              3600
+            );
             setTimeout(() => (progress.hidden = true), 700);
           } catch (err) {
             progress.hidden = true;
@@ -598,7 +620,7 @@
                   body,
                   tags: splitTags(root.querySelector('#postTags').value),
                   media_urls: mediaUrls,
-                  media_type: mediaUrls.length ? 'image' : 'none',
+                  media_type: mediaUrls.length ? mediaKind : 'none',
                   bike_id: root.querySelector('#postBike').value || null,
                   guild_id: root.querySelector('#postGuild') ? root.querySelector('#postGuild').value || null : null
                 }

@@ -77,6 +77,14 @@
                 <span class="pill-badge pill-green">📚 ${p.completed_modules_count} modules</span>
                 <span class="pill-badge pill-cyan">🖼️ ${p.posts_count} posts</span>
                 ${p.hide_from_leaderboards ? '<span class="pill-badge pill-orange">Hidden from leaderboards</span>' : ''}
+                ${
+                  !isSelf && p.mutual_friends && p.mutual_friends.count
+                    ? `<span class="pill-badge pill-cyan" title="Riders you are both friends with">🤝 ${p.mutual_friends.count} mutual friend${
+                        p.mutual_friends.count === 1 ? '' : 's'
+                      }${p.mutual_friends.names.length ? ` · @${p.mutual_friends.names.join(', @')}` : ''}</span>`
+                    : ''
+                }
+                ${!isSelf && p.is_friend ? '<span class="pill-badge pill-green">✓ Friends</span>' : ''}
               </div>
             </div>
             ${

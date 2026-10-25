@@ -26,7 +26,8 @@
           ['all', 'All guilds'],
           ['public', 'Public'],
           ['private', 'Approval-based'],
-          ['mine', 'My guilds']
+          ['mine', 'My guilds'],
+          ['invites', 'Invitations']
         ]
           .map(([v, l]) => `<button class="chip ${guildFilter === v ? 'active' : ''}" data-guild-filter="${v}">${l}</button>`)
           .join('')}
@@ -52,6 +53,7 @@
       if (guildFilter === 'public') guilds = guilds.filter((g) => g.privacy_type === 'public');
       if (guildFilter === 'private') guilds = guilds.filter((g) => g.privacy_type === 'private');
       if (guildFilter === 'mine') guilds = guilds.filter((g) => g.my_status === 'active' || g.my_status === 'pending_approval');
+      if (guildFilter === 'invites') guilds = guilds.filter((g) => g.my_status === 'invited');
       if (!guilds.length) {
         host.innerHTML = emptyState({
           icon: '🛡️',
@@ -82,6 +84,7 @@
               <span>Owner @${escapeHtml(g.owner_username)}</span>
               ${g.my_role ? `<span class="pill-badge pill-orange">Your role: ${escapeHtml(g.my_role)}</span>` : ''}
               ${g.my_status === 'pending_approval' ? '<span class="pill-badge pill-red">Approval pending</span>' : ''}
+              ${g.my_status === 'invited' ? '<span class="pill-badge pill-cyan">✉️ You are invited</span>' : ''}
             </div>
             <div class="guild-actions">
               <button class="btn btn-primary btn-sm" data-open-guild="${escapeHtml(g.id)}">Open guild</button>
@@ -90,6 +93,9 @@
                   ? '<button class="btn btn-secondary btn-sm" data-leave-guild="' + escapeHtml(g.id) + '">Leave</button>'
                   : g.my_status === 'pending_approval'
                   ? '<span class="pill-badge pill-orange">Awaiting moderator approval</span>'
+                  : g.my_status === 'invited'
+                  ? `<button class="btn btn-primary btn-sm" data-invite-accept="${escapeHtml(g.id)}">Accept invite</button>
+                     <button class="btn btn-secondary btn-sm" data-invite-decline="${escapeHtml(g.id)}">Decline</button>`
                   : `<button class="btn btn-secondary btn-sm" data-join-guild="${escapeHtml(g.id)}">${
                       g.privacy_type === 'private' ? 'Request to join' : 'Join guild'
                     }</button>`
@@ -129,10 +135,27 @@
       host.querySelectorAll('[data-report-guild]').forEach((b) =>
         b.addEventListener('click', () => window.RRFeed.openReport(b.dataset.reportGuild, 'guild'))
       );
+      host.querySelectorAll('[data-invite-accept]').forEach((b) =>
+        b.addEventListener('click', () => respondToInvite(b.dataset.inviteAccept, 'accept'))
+      );
+      host.querySelectorAll('[data-invite-decline]').forEach((b) =>
+        b.addEventListener('click', () => respondToInvite(b.dataset.inviteDecline, 'decline'))
+      );
     } catch (err) {
       host.innerHTML = errorState(err);
       const retry = host.querySelector('[data-retry]');
       if (retry) retry.addEventListener('click', loadGuilds);
+    }
+  }
+
+  async function respondToInvite(guildId, decision) {
+    try {
+      const res = await api(`/api/guilds/${guildId}/invite-response`, { method: 'POST', body: { decision } });
+      toast(res.message, 'success', 4000);
+      loadGuilds();
+      window.RR.refreshSession().catch(() => {});
+    } catch (err) {
+      toast(err.message, 'error');
     }
   }
 
@@ -247,11 +270,15 @@
             ${
               active
                 ? `<button class="btn btn-secondary btn-sm" id="leaveGuildBtn">Leave guild</button>`
+                : g.my_status === 'invited'
+                ? `<button class="btn btn-primary btn-sm" id="acceptInviteBtn">Accept invite</button>
+                   <button class="btn btn-secondary btn-sm" id="declineInviteBtn">Decline</button>`
                 : g.my_status === 'pending_approval'
                 ? '<span class="pill-badge pill-orange">Join request pending approval</span>'
                 : `<button class="btn btn-primary btn-sm" id="joinGuildBtn">${g.privacy_type === 'private' ? 'Request to join' : 'Join guild'}</button>`
             }
             <button class="btn btn-secondary btn-sm" id="reportGuildBtn">⚑ Report guild</button>
+            ${isOwnerOrMod ? '<button class="btn btn-secondary btn-sm" id="inviteRiderBtn">✉️ Invite rider</button>' : ''}
             ${isOwnerOrMod ? '<button class="btn btn-secondary btn-sm" id="editGuildBtn">✎ Edit guild</button>' : ''}
           </div>
         </section>
@@ -340,6 +367,28 @@
               </div>`
         }`;
 
+      const acceptInviteBtn = viewport.querySelector('#acceptInviteBtn');
+      if (acceptInviteBtn)
+        acceptInviteBtn.addEventListener('click', async () => {
+          try {
+            const res = await api(`/api/guilds/${guildId}/invite-response`, { method: 'POST', body: { decision: 'accept' } });
+            toast(res.message, 'success');
+            renderGuildDetail(viewport, guildId);
+          } catch (err) {
+            toast(err.message, 'error');
+          }
+        });
+      const declineInviteBtn = viewport.querySelector('#declineInviteBtn');
+      if (declineInviteBtn)
+        declineInviteBtn.addEventListener('click', async () => {
+          try {
+            const res = await api(`/api/guilds/${guildId}/invite-response`, { method: 'POST', body: { decision: 'decline' } });
+            toast(res.message, 'success');
+            renderGuildDetail(viewport, guildId);
+          } catch (err) {
+            toast(err.message, 'error');
+          }
+        });
       const joinBtn = viewport.querySelector('#joinGuildBtn');
       if (joinBtn)
         joinBtn.addEventListener('click', async () => {
@@ -365,6 +414,32 @@
         });
       viewport.querySelector('#reportGuildBtn').addEventListener('click', () => window.RRFeed.openReport(guildId, 'guild'));
 
+      const inviteBtn = viewport.querySelector('#inviteRiderBtn');
+      if (inviteBtn)
+        inviteBtn.addEventListener('click', () => {
+          modal({
+            title: `Invite a rider to ${g.name}`,
+            size: '480px',
+            body: `<p class="muted" style="font-size:.85rem">Search by exact username. The rider receives a notification and can accept or decline. Invitations count against the guild member limit only once accepted.</p>
+              <div class="form-group"><label class="form-label" for="inviteUsername">Rider username</label>
+              <input class="form-input" id="inviteUsername" placeholder="e.g. kasun_bmx_lk" /></div>`,
+            footer: '<button class="btn btn-primary" id="sendInviteBtn">Send invitation</button>',
+            onMount(root) {
+              root.querySelector('#sendInviteBtn').addEventListener('click', async () => {
+                const username = root.querySelector('#inviteUsername').value.trim();
+                if (!username) return;
+                try {
+                  const res = await api(`/api/guilds/${guildId}/invite`, { method: 'POST', body: { username } });
+                  closeModal();
+                  toast(res.message, 'success', 4000);
+                  renderGuildDetail(viewport, guildId);
+                } catch (err) {
+                  toast(err.message, 'error');
+                }
+              });
+            }
+          });
+        });
       const editBtn = viewport.querySelector('#editGuildBtn');
       if (editBtn) editBtn.addEventListener('click', () => openEditGuild(g, () => renderGuildDetail(viewport, guildId)));
       const annBtn = viewport.querySelector('#editAnnouncementBtn');

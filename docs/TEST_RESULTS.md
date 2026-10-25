@@ -3,17 +3,17 @@
 Date: **2026-10-25** · Node.js 22.22.3 · Linux x86_64 · Run with `npm test`.
 
 ```
-1..40
-# tests 40
-# pass 40
+1..42
+# tests 42
+# pass 42
 # fail 0
-# duration_ms ~6.6s
+# duration_ms ~7s
 ```
 
 Two suites, both executing the **real backend**:
 
-- `tests/api.test.js` — 29 API/security/authorization tests
-- `tests/ui.smoke.test.js` + `tests/ui.flows.test.js` — 11 end-to-end UI tests in `jsdom`
+- `tests/api.test.js` — 30 API/security/authorization tests
+- `tests/ui.smoke.test.js` + `tests/ui.flows.test.js` — 12 end-to-end UI tests in `jsdom`
   that load the actual `web_app/` bundle, sign in, render every route and drive complete
   user journeys through DOM events.
 
@@ -50,6 +50,7 @@ Two suites, both executing the **real backend**:
 | 27 | Ten unauthenticated write endpoints return 401 | §18 authorization on every write | PASS |
 | 28 | XP engine refuses unknown action types and clamps deltas to per-action caps | §5 anti-farming | PASS |
 | 29 | Forged/unverifiable Google ID token can never create a session | §3, §18 | PASS |
+| 30 | Guild invitations + accept, mutual-friend counts, MP4 clip uploads (8 MB cap), warning, temporary suspension expiry, admin guild member limit | §8, §9, §7, §14 | PASS |
 
 ## UI end-to-end suite (jsdom)
 
@@ -66,6 +67,7 @@ Two suites, both executing the **real backend**:
 | FLOW 5 | Guild chat message posts and renders | PASS |
 | FLOW 6 | Parts favorite toggles; event registration persists | PASS |
 | FLOW 7 | Non-friend cannot open private messaging (restriction toast, no composer) | PASS |
+| FLOW 8 | Guild owner invites a rider; invitation recorded for the invitee | PASS |
 
 ## APK build verification
 
@@ -84,7 +86,7 @@ an independent static analysis (`androguard`):
 | Bundled web app | 15 asset files under `assets/webapp/` | same |
 | Zip alignment | all stored entries 4-byte aligned | same |
 | Size | 2,300,124 B | 2,304,219 B |
-| SHA-256 | `8c0448e7…1381848` | `b5d70d94…12bd11` |
+| SHA-256 | `eaa02613…c2ec77d` | `e8ffe5ca…478afff` |
 
 Certificate and file digests: `release/BUILD_INFO.md`, `release/apk/SHA256SUMS.txt`.
 

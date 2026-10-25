@@ -305,20 +305,38 @@
             <option value="action_taken">Action taken — remove content / restrict account</option>
             <option value="dismissed">Dismiss — no violation found</option>
           </select></div>
-        <div class="form-group"><label class="form-label" for="resolveNote">Resolution note (shared with the reporter)</label>
+        <div class="form-group"><label class="form-label" for="resolveNote">Resolution note (shared with the reporter and, when actioned, the rider)</label>
           <textarea class="form-textarea" id="resolveNote" rows="3" maxlength="400"></textarea></div>
-        <label class="check-row"><input type="checkbox" id="suspendUser" /><span>Suspend the reported user account (serious violations only)</span></label>
-        <div class="callout callout-warn">This action is recorded in the administrative audit log with your account ID.</div>`,
+        <div class="form-group"><label class="form-label" for="accountAction">Account action</label>
+          <select class="form-select" id="accountAction">
+            <option value="none">No account action</option>
+            <option value="warn">Issue a warning</option>
+            <option value="suspend">Suspend the account</option>
+          </select></div>
+        <div class="form-group" id="suspendDaysWrap" hidden><label class="form-label" for="suspendDays">Suspension length</label>
+          <select class="form-select" id="suspendDays">
+            <option value="3">3 days</option>
+            <option value="7" selected>7 days</option>
+            <option value="30">30 days</option>
+            <option value="permanent">Permanent (serious violations)</option>
+          </select>
+          <div class="hint">Temporary suspensions lift automatically when they expire.</div></div>
+        <div class="callout callout-warn">This action is recorded in the administrative audit log with your account ID, and the rider is notified.</div>`,
       footer: '<button class="btn btn-primary" id="confirmResolve">Record decision</button>',
       onMount(root) {
+        root.querySelector('#accountAction').addEventListener('change', (e) => {
+          root.querySelector('#suspendDaysWrap').hidden = e.target.value !== 'suspend';
+        });
         root.querySelector('#confirmResolve').addEventListener('click', async () => {
           try {
+            const action = root.querySelector('#accountAction').value;
             const res = await api(`/api/admin/reports/${reportId}/resolve`, {
               method: 'POST',
               body: {
                 decision: root.querySelector('#resolveDecision').value,
                 resolution_note: root.querySelector('#resolveNote').value || 'Reviewed by moderation team.',
-                suspendUser: root.querySelector('#suspendUser').checked
+                accountAction: action,
+                suspensionDays: root.querySelector('#suspendDays').value
               }
             });
             closeModal();

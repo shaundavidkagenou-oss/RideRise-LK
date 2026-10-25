@@ -7,8 +7,8 @@ independently with `apksigner verify` and `androguard`.
 
 | File | Size | SHA-256 |
 |---|---|---|
-| `apk/riderise-lk-phase1-debug.apk` | 2,300,124 B | `8c0448e7a8ef5c2e5d40abf5c078170f4e006ac4cb529eedd40c355261381848` |
-| `apk/riderise-lk-phase1-release.apk` | 2,304,219 B | `b5d70d94d1f3c1bbf514658cafd90e73a5d98275b7c35ee466754fd2cf12bd11` |
+| `apk/riderise-lk-phase1-debug.apk` | 2,300,124 B | `eaa026133e857d8156988c7351db2856eac6ccded2e0155432c15b72dc2ec77d` |
+| `apk/riderise-lk-phase1-release.apk` | 2,304,219 B | `e8ffe5ca08c460e72ad6286a0dbe8eda0a0276c5f1fe9332b281c2bcb478afff` |
 
 Both are also listed in `apk/SHA256SUMS.txt` (verify with `sha256sum -c SHA256SUMS.txt`).
 
